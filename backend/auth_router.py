@@ -172,7 +172,7 @@ async def update_profile(payload: ProfileRequest, user: CurrentUser):
     if payload.preferred_product not in {None, "industrial", "automotive"}:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose industrial or automotive.")
     if payload.preferred_language not in {None, "en-US", "es-MX"}:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose English or Espa\u00f1ol.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose English or Español.")
     updates = {**payload.model_dump(exclude_unset=True), "updated_at": now_iso()}
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
     return {**user, **updates}
