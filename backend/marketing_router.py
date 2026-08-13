@@ -1,30 +1,23 @@
-"""Marketing router — serves ad / vendor partnership endpoints.
-
-Currently a placeholder that returns empty ad placements.
-Will be connected to a real ad-serving backend once vendor
-partnerships are finalized.
-"""
+"""Public lead capture for the WrenchRelay landing page."""
 
 from fastapi import APIRouter
+from pydantic import BaseModel, EmailStr, Field
 
-router = APIRouter(prefix="/api/marketing", tags=["marketing"])
-
-
-@router.get("/ads")
-async def get_ads(slot: str = "default"):
-    """Return ads for a given slot.
-
-    Currently returns an empty list (no active campaigns).
-    """
-    return {"slot": slot, "ads": []}
+from db import db, now_iso
+from security import new_id
 
 
-@router.get("/health")
-async def marketing_health():
-    return {"status": "ok", "module": "marketing"}
+router = APIRouter(prefix="/public", tags=["marketing"])
 
 
-# Future: POST /api/marketing/impressions
-# Future: POST /api/marketing/clicks
-# Future: GET /api/marketing/campaigns (admin)
-# Future: analytics aggregation endpoint
+class DemoRequestInput(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    company: str = Field(min_length=2, max_length=160)
+
+
+@router.post("/demo-requests")
+async def demo_request(payload: DemoRequestInput):
+    record = {"id": new_id(), "name": payload.name.strip(), "email": str(payload.email).lower(), "company": payload.company.strip(), "status": "New", "created_at": now_iso(), "updated_at": now_iso()}
+    await db.demo_requests.update_one({"email": record["email"], "company": record["company"]}, {"$set": record}, upsert=True)
+    return {"ok": True, "message": "Your demo request has been received."}

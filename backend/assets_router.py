@@ -1,32 +1,26 @@
-"""Assets router — CRUD for equipment / asset records.
+"""Authenticated organization-scoped asset list and history endpoints."""
 
-Provides endpoints to list, create, update, and get individual assets
-belonging to the authenticated user's workspace.
-"""
+from fastapi import APIRouter, HTTPException
 
-from fastapi import APIRouter, Depends, HTTPException
-from .db import get_db
-from .security import get_current_user
+from db import db
+from security import CurrentUser, require_organization
 
-router = APIRouter(prefix="/api/assets", tags=["assets"])
+
+router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 @router.get("")
-async def list_assets(db=Depends(get_db), user=Depends(get_current_user)):
-    result = db.table("assets").select("*").eq("workspace_id", user["workspace_id"]).execute()
-    return result.data
+async def list_assets(organization_id: str, user: CurrentUser):
+    await require_organization(user, organization_id, "assets:read")
+    assets = await db.assets.find({"organization_id": organization_id, "archived": {"$ne": True}}, {"_id": 0}).sort("asset_name", 1).to_list(1000)
+    return {"assets": assets}
 
 
 @router.get("/{asset_id}")
-async def get_asset(asset_id: str, db=Depends(get_db), user=Depends(get_current_user)):
-    result = db.table("assets").select("*").eq("id", asset_id).eq("workspace_id", user["workspace_id"]).single().execute()
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return result.data
-
-
-@router.post("")
-async def create_asset(payload: dict, db=Depends(get_db), user=Depends(get_current_user)):
-    payload["workspace_id"] = user["workspace_id"]
-    result = db.table("assets").insert(payload).execute()
-    return result.data[0] if result.data else {}
+async def get_asset(asset_id: str, organization_id: str, user: CurrentUser):
+    await require_organization(user, organization_id, "assets:read")
+    asset = await db.assets.find_one({"id": asset_id, "organization_id": organization_id}, {"_id": 0})
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found.")
+    work_orders = await db.work_orders.find({"asset_id": asset_id, "organization_id": organization_id, "archived": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"asset": asset, "work_orders": work_orders}
