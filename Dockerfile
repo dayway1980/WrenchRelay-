@@ -14,10 +14,10 @@ FROM python:3.11-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
-COPY backend/requirements.txt /app/backend/requirements.txt
+COPY requirements.txt /app/backend/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r /app/backend/requirements.txt
-COPY backend/ /app/backend/
+COPY . /app/backend/
 COPY --from=frontend-build /src/frontend/build /app/frontend/build
 WORKDIR /app/backend
 CMD ["sh", "-c", "exec uvicorn production:app --host 0.0.0.0 --port ${PORT:-8080}"]
