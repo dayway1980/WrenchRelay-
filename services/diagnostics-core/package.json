@@ -1,0 +1,31 @@
+{
+  "name": "@wrenchrelay/diagnostics-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "build": "npm run prisma:generate && tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "node --import tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "7.10.0",
+    "dotenv": "16.6.1",
+    "express": "5.1.0",
+    "pino": "9.9.4",
+    "zod": "4.1.11"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.3",
+    "@types/node": "24.5.2",
+    "prisma": "7.10.0",
+    "tsx": "4.20.5",
+    "typescript": "5.9.2"
+  }
+}

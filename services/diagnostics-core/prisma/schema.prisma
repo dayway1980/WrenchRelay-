@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceKind {
+  INDUSTRIAL
+  AUTOMOTIVE
+}
+
+enum ObservationSource {
+  TECHNICIAN_TRANSCRIPT
+  TECHNICIAN_TEXT
+  SENSOR_FRAGMENT
+  MACHINE_CODE
+  ASSET_CONTEXT
+  EXTERNAL_SYSTEM
+}
+
+enum InferenceStatus {
+  PROPOSED
+  CONFIRMED
+  REJECTED
+  SUPERSEDED
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum CmmsProvider {
+  FIIX
+  EMAINT
+  MAINTENANCE_CONNECTION
+  GENERIC_REST
+}
+
+enum CmmsDraftStatus {
+  PREPARED
+  APPROVED
+  REJECTED
+  DISPATCHING
+  DISPATCHED
+  FAILED
+  REVOKED
+}
+
+enum ProvenanceRelation {
+  USED
+  WAS_DERIVED_FROM
+  WAS_GENERATED_BY
+  WAS_ATTRIBUTED_TO
+  INVALIDATED
+  SUPERSEDED
+}
+
+model Tenant {
+  id            String             @id @db.Uuid
+  externalKey   String             @unique
+  displayName   String
+  createdAt     DateTime           @default(now())
+  observations  Observation[]
+  inferences    Inference[]
+  approvals     HumanApproval[]
+  cmmsDrafts    CmmsDraft[]
+  cmmsConfigs   CmmsConnection[]
+  translations  TranslationBinding[]
+  provenanceEdges ProvenanceEdge[]
+
+  @@map("tenants")
+}
+
+model Observation {
+  id                String             @id @db.Uuid
+  tenantId          String             @db.Uuid
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  analysisId        String             @db.Uuid
+  workspace         WorkspaceKind
+  source            ObservationSource
+  locale            String             @db.VarChar(35)
+  rawText           String?
+  normalizedText    String?
+  structuredValue   Json?
+  inputSha256       String             @db.Char(64)
+  occurredAt        DateTime?
+  receivedAt        DateTime           @default(now())
+  actorExternalId   String?
+  spans             EvidenceSpan[]
+  inferenceLinks    InferenceEvidence[]
+
+  @@index([tenantId, analysisId])
+  @@index([tenantId, source, receivedAt])
+  @@map("observations")
+}
+
+model EvidenceSpan {
+  id              String        @id @db.Uuid
+  observationId   String        @db.Uuid
+  observation     Observation   @relation(fields: [observationId], references: [id], onDelete: Restrict)
+  startChar       Int?
+  endChar         Int?
+  rawFragment     String
+  normalizedValue String
+  semanticType    String        @db.VarChar(80)
+  fragmentSha256  String        @db.Char(64)
+  createdAt       DateTime      @default(now())
+  inferenceLinks  InferenceEvidence[]
+
+  @@index([observationId])
+  @@map("evidence_spans")
+}
+
+model Inference {
+  id                       String             @id @db.Uuid
+  tenantId                 String             @db.Uuid
+  tenant                   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  analysisId               String             @db.Uuid
+  label                    String             @db.VarChar(120)
+  summary                  String
+  confidence               Float
+  unknownMechanismProbability Float
+  method                   String             @db.VarChar(120)
+  methodVersion            String             @db.VarChar(60)
+  status                   InferenceStatus    @default(PROPOSED)
+  requiresHumanReview      Boolean            @default(true)
+  generatedAt              DateTime           @default(now())
+  evidence                 InferenceEvidence[]
+  cmmsDrafts               CmmsDraft[]
+
+  @@index([tenantId, analysisId])
+  @@index([tenantId, status, generatedAt])
+  @@map("inferences")
+}
+
+model InferenceEvidence {
+  id              String        @id @db.Uuid
+  inferenceId     String        @db.Uuid
+  observationId   String        @db.Uuid
+  evidenceSpanId  String?       @db.Uuid
+  contribution    Float
+  rationale       String
+
+  inference       Inference     @relation(fields: [inferenceId], references: [id], onDelete: Restrict)
+  observation     Observation   @relation(fields: [observationId], references: [id], onDelete: Restrict)
+  evidenceSpan    EvidenceSpan? @relation(fields: [evidenceSpanId], references: [id], onDelete: Restrict)
+
+  @@index([inferenceId])
+  @@index([observationId])
+  @@index([evidenceSpanId])
+  @@map("inference_evidence")
+}
+
+model CmmsConnection {
+  id                String       @id @db.Uuid
+  tenantId          String       @db.Uuid
+  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  provider          CmmsProvider
+  displayName       String
+  baseUrl           String
+  secretRef         String       @db.VarChar(120)
+  providerConfig    Json
+  enabled           Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  drafts            CmmsDraft[]
+
+  @@unique([tenantId, displayName])
+  @@index([tenantId, provider, enabled])
+  @@map("cmms_connections")
+}
+
+model CmmsDraft {
+  id              String          @id @db.Uuid
+  tenantId        String          @db.Uuid
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  connectionId    String          @db.Uuid
+  connection      CmmsConnection  @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  inferenceId     String?         @db.Uuid
+  inference       Inference?      @relation(fields: [inferenceId], references: [id], onDelete: Restrict)
+  operation       String          @db.VarChar(80)
+  payload         Json
+  payloadSha256   String          @db.Char(64)
+  status          CmmsDraftStatus @default(PREPARED)
+  createdBy       String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  approvals       HumanApproval[]
+  dispatches      CmmsDispatch[]
+
+  @@index([tenantId, status, createdAt])
+  @@map("cmms_drafts")
+}
+
+model HumanApproval {
+  id              String           @id @db.Uuid
+  tenantId        String           @db.Uuid
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  draftId         String           @db.Uuid
+  draft           CmmsDraft        @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  decision        ApprovalDecision
+  approvedPayloadSha256 String      @db.Char(64)
+  actorExternalId String
+  actorDisplay    String?
+  comment         String?
+  decidedAt       DateTime         @default(now())
+  clientContext   Json?
+
+  @@index([tenantId, draftId, decidedAt])
+  @@map("human_approvals")
+}
+
+model CmmsDispatch {
+  id               String          @id @db.Uuid
+  draftId          String          @db.Uuid
+  draft            CmmsDraft       @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  idempotencyKey   String          @unique
+  requestSha256    String          @db.Char(64)
+  httpStatus       Int?
+  providerRecordId String?
+  responseBody     Json?
+  errorCode        String?
+  startedAt        DateTime        @default(now())
+  finishedAt       DateTime?
+
+  @@index([draftId, startedAt])
+  @@map("cmms_dispatches")
+}
+
+model TranslationBinding {
+  id              String    @id @db.Uuid
+  tenantId        String?   @db.Uuid
+  tenant          Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  namespace       String    @db.VarChar(80)
+  key             String    @db.VarChar(160)
+  locale          String    @db.VarChar(35)
+  text            String
+  sourceSha256    String    @db.Char(64)
+  humanVerified   Boolean   @default(false)
+  verifiedBy      String?
+  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime  @default(now())
+
+  @@unique([tenantId, namespace, key, locale])
+  @@index([locale, namespace])
+  @@map("translation_bindings")
+}
+
+model ProvenanceEdge {
+  id              String               @id @db.Uuid
+  tenantId        String               @db.Uuid
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sourceEntity    String               @db.VarChar(80)
+  sourceId        String               @db.Uuid
+  relation        ProvenanceRelation
+  targetEntity    String               @db.VarChar(80)
+  targetId        String               @db.Uuid
+  activity        String?              @db.VarChar(120)
+  agentExternalId String?
+  metadata        Json?
+  createdAt       DateTime             @default(now())
+
+  @@index([tenantId, sourceEntity, sourceId])
+  @@index([tenantId, targetEntity, targetId])
+  @@map("provenance_edges")
+}
