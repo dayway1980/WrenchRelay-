@@ -73,7 +73,7 @@ function App(){
  useEffect(()=>{request('/api/config').then(d=>setConfig({...d,personalities:d.personalities?.length?d.personalities:defaultPersonalities})).catch(()=>{})},[]);
  useEffect(()=>{request('/api/me').then(setMe).catch(()=>setMe(null)).finally(()=>setSessionReady(true))},[]);
  useEffect(()=>{if(!me)return;request('/api/work-orders').then(setHistory).catch(()=>{})},[me,result]);
- useEffect(()=>{if(!me||!voiceOn||greeted.current)return;greeted.current=true;const t=setTimeout(()=>speak(`Welcome to WrenchRelay ${mode==='automotive'?'Automotive':'Industrial'}. Tell me what happened, and choose whether you want a work order, troubleshooting plan, or handoff.`),700);return()=>clearTimeout(t)},[token,mode,voiceOn]);
+ useEffect(()=>{if(!me||!voiceOn||greeted.current)return;greeted.current=true;const t=setTimeout(()=>speak(`Welcome to WrenchRelay ${mode==='automotive'?'Automotive':'Industrial'}. Tell me what happened, and choose whether you want a work order, troubleshooting plan, or handoff.`),700);return()=>clearTimeout(t)},[me,mode,voiceOn]);
  const choose=m=>{localStorage.setItem('wr_mode',m);setMode(m)};
  const openLegal=t=>{window.history.pushState({},'',`/${t}`);setLegalType(t)};
  const closeLegal=()=>{window.history.pushState({},'','/');setLegalType('')};
