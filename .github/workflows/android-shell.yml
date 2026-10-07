@@ -30,6 +30,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+      - name: Lint release
+        run: gradle --no-daemon :app:lintRelease
+      - name: Run unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Build unsigned release bundle
@@ -40,5 +44,6 @@ jobs:
           path: |
             android-shell/app/build/outputs/apk/debug/*.apk
             android-shell/app/build/outputs/bundle/release/*.aab
+            android-shell/app/build/reports/lint-results-release.html
           if-no-files-found: error
           retention-days: 14
