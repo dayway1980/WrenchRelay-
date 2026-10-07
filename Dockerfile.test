@@ -1,0 +1,7 @@
+FROM python:3.11-bookworm
+
+WORKDIR /app
+
+COPY provider_connectivity_check.py /app/provider_connectivity_check.py
+
+CMD ["python3", "provider_connectivity_check.py"]
