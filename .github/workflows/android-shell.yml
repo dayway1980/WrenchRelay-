@@ -1,0 +1,44 @@
+name: Android Shell
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android-shell/**'
+      - '.github/workflows/android-shell.yml'
+  pull_request:
+    paths:
+      - 'android-shell/**'
+      - '.github/workflows/android-shell.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-shell
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Build unsigned release bundle
+        run: gradle --no-daemon :app:bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wrenchrelay-industrial-android-build
+          path: |
+            android-shell/app/build/outputs/apk/debug/*.apk
+            android-shell/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 14
