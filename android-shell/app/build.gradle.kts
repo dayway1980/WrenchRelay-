@@ -1,8 +1,11 @@
-plugins { id("com.android.application") }
+plugins {
+    id("com.android.application")
+}
 
 android {
     namespace = "com.wrenchrelay.industrial"
     compileSdk = 36
+
     defaultConfig {
         applicationId = "com.wrenchrelay.industrial"
         minSdk = 26
@@ -12,4 +15,14 @@ android {
     }
 }
 
-dependencies { implementation("androidx.appcompat:appcompat:1.7.1") }
+configurations.configureEach {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.8.22")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22")
+    }
+}
+
+dependencies {
+    implementation("androidx.appcompat:appcompat:1.7.1")
+}
