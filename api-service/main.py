@@ -271,20 +271,42 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-@app.get("/api/health")
-def health():
-    db_ok = False
+def database_state():
+    if not MONGO_URL:
+        return "not_configured"
     if _client:
         try:
             _client.admin.command("ping")
-            db_ok = True
+            return "ok"
         except Exception:
-            db_ok = False
+            return "unavailable"
+    return "unavailable"
+
+
+@app.get("/api/health/live")
+def health_live():
+    return {"status": "ok", "service": "wrenchrelay", "version": APP_VERSION}
+
+
+@app.get("/api/health/ready")
+def health_ready():
+    state = database_state()
+    if state != "ok":
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "degraded", "service": "wrenchrelay", "database": state},
+        )
+    return {"status": "ok", "service": "wrenchrelay", "database": state}
+
+
+@app.get("/api/health")
+def health():
+    state = database_state()
     return {
-        "status": "ok",
+        "status": "ok" if state == "ok" else "degraded",
         "service": "wrenchrelay",
         "version": APP_VERSION,
-        "database": "ok" if db_ok else ("unavailable" if MONGO_URL else "not_configured"),
+        "database": state,
     }
 
 

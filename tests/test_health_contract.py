@@ -22,3 +22,12 @@ def test_frontend_build_uses_patched_node_runtime():
 
     assert "FROM node:22.23.4-bookworm AS frontend-build" in dockerfile
     assert package["engines"]["node"] == ">=22.23.4 <23"
+
+
+def test_vercel_api_has_liveness_and_readiness_routes():
+    source = Path("api-service/main.py").read_text(encoding="utf-8")
+    ast.parse(source)
+
+    assert '@app.get("/api/health/live")' in source
+    assert '@app.get("/api/health/ready")' in source
+    assert 'status_code=503' in source
