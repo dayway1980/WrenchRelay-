@@ -21,8 +21,13 @@ Railway runs the root Dockerfile. The container starts:
 uvicorn production:app --host 0.0.0.0 --port ${PORT:-8080}
 ```
 
-Production entrypoint: `backend/production.py`  
-Health check: `/api/health`
+Production entrypoint: `backend/production.py`
+
+Deployment readiness check: `/api/health/ready`
+
+Process liveness check: `/api/health/live`
+
+External status check: `/api/health`
 
 Intended public routing:
 
@@ -54,6 +59,12 @@ See `.env.example`. Never commit secrets. The important production variables are
 - `LEGAL_ENTITY_NAME`
 - `LEGAL_EMAIL`
 
+The persistence layer is selected entirely by `MONGO_URL`/`MONGODB_URI`; no
+application code or customer-facing DNS change is required to move between
+compatible managed MongoDB providers. Production must use a non-pausing,
+replicated cluster with automated backups. Validate a replacement with
+`scripts/verify_database.py` before changing production configuration.
+
 ## Safety boundary
 
 WrenchRelay is a documentation and reasoning assistant. It does **not** replace LOTO, qualified-person rules, electrical safe-work practices, guarding, OEM/service information, vehicle lifting/airbag/high-voltage procedures, engineering review, or site procedures. AI output must be verified by the technician before action or entry into an official record.
@@ -63,8 +74,8 @@ WrenchRelay is a documentation and reasoning assistant. It does **not** replace 
 Run dependency-light source checks:
 
 ```bash
-python scripts/commission.py
-python tests/dynamic_smoke.py
+python commission.py
+python dynamic_smoke.py
 ```
 
 Then perform a real production build (Docker/Railway) and execute `ACCEPTANCE_TESTS.md` against the deployed environment.

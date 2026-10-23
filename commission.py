@@ -5,7 +5,7 @@ Runs without network access and without importing third-party app dependencies.
 from pathlib import Path
 import ast, json, re, sys
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parent
 failures=[]
 passes=[]
 
@@ -14,14 +14,14 @@ def ok(name, cond, detail=''):
 
 # Required files
 required=[
-    'Dockerfile','railway.json','.env.example','backend/server.py','backend/production.py',
-    'backend/requirements.txt','frontend/package.json','frontend/public/index.html',
-    'frontend/src/App.js','frontend/src/index.js','frontend/src/styles.css'
+    'Dockerfile','railway.json','.env.example','server.py','backend/production.py',
+    'requirements.txt','package.json','public/index.html',
+    'src/App.js','src/index.js','src/styles.css'
 ]
 for f in required: ok(f'required:{f}',(ROOT/f).is_file())
 
 # JSON parse
-for f in ['railway.json','frontend/package.json']:
+for f in ['railway.json','package.json']:
     try: json.loads((ROOT/f).read_text()); ok(f'json:{f}',True)
     except Exception as e: ok(f'json:{f}',False,str(e))
 
@@ -30,9 +30,9 @@ for f in ROOT.joinpath('backend').glob('*.py'):
     try: ast.parse(f.read_text()); ok(f'python-syntax:{f.name}',True)
     except Exception as e: ok(f'python-syntax:{f.name}',False,str(e))
 
-server=(ROOT/'backend/server.py').read_text()
-appjs=(ROOT/'frontend/src/App.js').read_text()
-css=(ROOT/'frontend/src/styles.css').read_text()
+server=(ROOT/'server.py').read_text()
+appjs=(ROOT/'src/App.js').read_text()
+css=(ROOT/'src/styles.css').read_text()
 
 # Endpoint inventory
 routes=[
@@ -76,7 +76,7 @@ else: ok('personalities>=10',False,'PERSONALITIES not found')
 # Railway expected settings
 rail=json.loads((ROOT/'railway.json').read_text())
 ok('railway:dockerfile',rail.get('build',{}).get('builder')=='DOCKERFILE')
-ok('railway:healthcheck',rail.get('deploy',{}).get('healthcheckPath')=='/api/health')
+ok('railway:healthcheck',rail.get('deploy',{}).get('healthcheckPath')=='/api/health/ready')
 ok('railway:no-sleep',rail.get('deploy',{}).get('sleepApplication') is False)
 
 # Safety prompt boundaries

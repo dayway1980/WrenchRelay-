@@ -271,20 +271,46 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+def database_status() -> str:
+    """Return a dependency state without exposing connection details."""
+    if not MONGO_URL:
+        return "not_configured"
+    if not _client:
+        return "unavailable"
+    try:
+        _client.admin.command("ping")
+        return "ok"
+    except Exception:
+        return "unavailable"
+
+
+@app.get("/api/health/live")
+def liveness():
+    """Process-only probe. A database incident must not cause a restart loop."""
+    return {"status": "ok", "service": "wrenchrelay", "version": APP_VERSION}
+
+
+@app.get("/api/health/ready")
+def readiness():
+    """Traffic/deployment gate that fails closed when persistence is unavailable."""
+    state = database_status()
+    if state != "ok":
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "degraded", "service": "wrenchrelay", "database": state},
+        )
+    return {"status": "ok", "service": "wrenchrelay", "version": APP_VERSION, "database": state}
+
+
 @app.get("/api/health")
 def health():
-    db_ok = False
-    if _client:
-        try:
-            _client.admin.command("ping")
-            db_ok = True
-        except Exception:
-            db_ok = False
+    """Backward-compatible detailed health response for external monitoring."""
+    state = database_status()
     return {
-        "status": "ok",
+        "status": "ok" if state == "ok" else "degraded",
         "service": "wrenchrelay",
         "version": APP_VERSION,
-        "database": "ok" if db_ok else ("unavailable" if MONGO_URL else "not_configured"),
+        "database": state,
     }
 
 

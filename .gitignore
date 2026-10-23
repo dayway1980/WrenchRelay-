@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 node_modules/
+build/
 frontend/build/
 __pycache__/
 *.pyc

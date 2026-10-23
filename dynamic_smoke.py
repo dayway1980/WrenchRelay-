@@ -3,8 +3,8 @@
 import os, sys, types, hashlib, secrets, time, json
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'backend'))
+ROOT=Path(__file__).resolve().parent
+sys.path.insert(0,str(ROOT))
 os.environ.setdefault('JWT_SECRET','unit-test-only-generated-'+secrets.token_hex(16))
 os.environ.pop('MONGO_URL',None); os.environ.pop('MONGODB_URI',None)
 os.environ.pop('OPENAI_API_KEY',None); os.environ.pop('GOOGLE_CLIENT_ID',None)
@@ -112,6 +112,7 @@ sys.modules.update({'google':google,'google.oauth2':oauth2,'google.oauth2.id_tok
 import server
 # Install fake DB after module import (MONGO_URL intentionally absent during import)
 server._client=Client(); server._db=server._client.db
+server.MONGO_URL='mongodb://smoke-test.invalid/wrenchrelay'
 server.OPENAI_API_KEY='x'
 
 from fastapi.testclient import TestClient
