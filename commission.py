@@ -106,6 +106,9 @@ ok('security:no-test-report-artifacts',not bad,','.join(bad))
 
 # Production entrypoint
 prod=(ROOT/'backend/production.py').read_text()
+ok('production:custom-cors-preserved', 'os.environ["CORS_ORIGINS"] =' not in prod)
+ok('production:custom-frontend-url-preserved', 'if railway_domain and not os.environ.get("FRONTEND_URL")' in prod)
+ok('legal:correct-default-entity', 'LEGAL_ENTITY_NAME = os.getenv("LEGAL_ENTITY_NAME", "WrenchRelay LLC")' in server)
 docker=(ROOT/'Dockerfile').read_text()
 ok('production:imports-app','from server import app' in prod)
 ok('production:static-build','frontend' in prod and 'build' in prod)
