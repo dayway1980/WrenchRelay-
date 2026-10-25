@@ -9,6 +9,7 @@ on:
       - 'api-service/**'
       - '.env.example'
       - 'commission.py'
+      - 'tests/**'
       - '.github/workflows/source-commissioning.yml'
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - 'api-service/**'
       - '.env.example'
       - 'commission.py'
+      - 'tests/**'
       - '.github/workflows/source-commissioning.yml'
   workflow_dispatch:
 
@@ -36,3 +38,7 @@ jobs:
         run: python -m compileall -q backend api-service server.py commission.py scripts/container_smoke.py
       - name: Run dependency-free commissioning gates
         run: python commission.py
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Verify health and legal configuration behavior
+        run: python -m pytest -q tests/test_health_contract.py tests/test_legal_defaults.py

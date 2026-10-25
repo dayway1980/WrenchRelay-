@@ -25,6 +25,7 @@ jobs:
             -e FRONTEND_URL=https://custom.example.invalid \
             -e CORS_ORIGINS=https://custom.example.invalid \
             -e RAILWAY_PUBLIC_DOMAIN=generated.example.invalid \
+            -e LEGAL_ENTITY_NAME= \
             -v "$PWD/scripts/container_smoke.py:/app/backend/container_smoke.py:ro" \
             wrenchrelay-ci python container_smoke.py
       - name: Verify readiness with disposable MongoDB
