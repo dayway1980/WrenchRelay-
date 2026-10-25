@@ -30,7 +30,12 @@ The wrench-relay preview returned an empty legal_entity despite the corrected mi
 4. Verify authentication/session compatibility, customer history, voice workflows, human verification and payment safeguards on an isolated candidate.
 5. Require release-specific acceptance and rollback evidence before moving traffic.
 
-Cloudflare's Workers build check still fails for the candidate. No authenticated build log was inspected in this review, so its cause is unconfirmed and separate from the successful Docker/Vercel builds.
+Cloudflare's Workers build check still fails for the candidate. A later
+authenticated inspection confirmed a missing Worker entrypoint or assets
+directory, separately from the successful Docker/Vercel builds. See
+[the PR #16 deployment review](PR16_DEPLOYMENT_REVIEW_2026-10-25.md) for the
+original and current commit logs, metadata-only routing inspection and the
+offline release evidence checker. Both Vercel previews still return 503 readiness.
 
 No production deployment, database write, DNS update, credential change or paid service was performed.
 

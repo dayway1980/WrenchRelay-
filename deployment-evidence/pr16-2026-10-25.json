@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d",
+  "observed_at": "2026-10-25T21:47:37.021Z",
+  "github": {
+    "commit": "70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d",
+    "observed_at": "2026-10-25T21:47:37.021Z",
+    "source": "https://github.com/dayway1980/WrenchRelay-/commit/70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d/checks",
+    "checks": [
+      {
+        "name": "container-build",
+        "status": "completed",
+        "conclusion": "success",
+        "source": "https://github.com/dayway1980/WrenchRelay-/actions/runs/40194433034/job/121172120605",
+        "completed_at": "2026-10-25T12:45:33Z"
+      },
+      {
+        "name": "source-checks",
+        "status": "completed",
+        "conclusion": "success",
+        "source": "https://github.com/dayway1980/WrenchRelay-/actions/runs/40194433003/job/121172120458",
+        "completed_at": "2026-10-25T12:44:31Z"
+      }
+    ]
+  },
+  "vercel": [
+    {
+      "project": "wrench-relay",
+      "commit": "70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d",
+      "observed_at": "2026-10-25T21:47:37.021Z",
+      "source": "https://vercel.com/dayway1980s-projects/wrench-relay/J8ewSRHnrCcXD6jxsQmarxKaztNT",
+      "deployment_id": "dpl_J8ewSRHnrCcXD6jxsQmarxKaztNT",
+      "deployment_url": "https://wrench-relay-jz6x5vhdv-dayway1980s-projects.vercel.app",
+      "state": "READY",
+      "environment": "preview",
+      "readiness": {
+        "commit": "70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d",
+        "observed_at": "2026-10-25T21:41:19.000Z",
+        "source": "https://wrench-relay-jz6x5vhdv-dayway1980s-projects.vercel.app/api/health/ready",
+        "http_status": 503,
+        "database": "not_configured"
+      }
+    },
+    {
+      "project": "wrenchrelay-industrial",
+      "commit": "70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d",
+      "observed_at": "2026-10-25T21:47:37.021Z",
+      "source": "https://vercel.com/dayway1980s-projects/wrenchrelay-industrial/3zu2zj1ygh3sNrCkuEmsxvkRGVPf",
+      "deployment_id": "dpl_3zu2zj1ygh3sNrCkuEmsxvkRGVPf",
+      "deployment_url": "https://wrenchrelay-industrial-nesy1ggu3-dayway1980s-projects.vercel.app",
+      "state": "READY",
+      "environment": "preview",
+      "readiness": {
+        "commit": "70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d",
+        "observed_at": "2026-10-25T21:41:26.000Z",
+        "source": "https://wrenchrelay-industrial-nesy1ggu3-dayway1980s-projects.vercel.app/api/health/ready",
+        "http_status": 503,
+        "database": "not_configured"
+      }
+    }
+  ],
+  "cloudflare": {
+    "commit": "70fb5a7f1f6d3c5d043ac6cbabe3d91c57b0911d",
+    "observed_at": "2026-10-25T21:47:37.021Z",
+    "source": "https://dash.cloudflare.com/eff681f2cdce601d3f6ad13e78e96159/workers/services/view/wrenchrelay/production/builds/8115993a-fe9f-4148-93a3-3eaf13a5bcab",
+    "state": "failed",
+    "scope": "non-production-version-upload",
+    "build_id": "8115993a-fe9f-4148-93a3-3eaf13a5bcab",
+    "completed_at": "2026-10-25T12:47:49.491Z",
+    "error": "Missing entry-point to Worker script or to assets directory",
+    "original_notification": {
+      "commit": "20e394bd96c2d76c906b17534b961a8b7720bba4",
+      "build_id": "0e12533c-5168-4116-a222-59856a410467",
+      "state": "failed",
+      "completed_at": "2026-10-25T02:01:08.687Z"
+    }
+  },
+  "proofs": {},
+  "notes": [
+    "No source, storage, session, live-backup restoration, workflow, payment or rollback proof is asserted by this snapshot.",
+    "GitHub checks and Vercel build state were inspected for the exact head. Runtime readiness used immutable deployment URLs.",
+    "Cloudflare trigger/configuration and current deployment metadata were read; no trigger or production setting was changed."
+  ]
+}
