@@ -1,0 +1,64 @@
+name: Container build and smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build candidate image without publishing
+        run: docker build --pull --tag wrenchrelay-ci .
+      - name: Verify dependency compatibility
+        run: docker run --rm --network none wrenchrelay-ci python -m pip check
+      - name: Verify container without external dependencies
+        run: |
+          docker run --rm --network none \
+            -e FRONTEND_URL=https://custom.example.invalid \
+            -e CORS_ORIGINS=https://custom.example.invalid \
+            -e RAILWAY_PUBLIC_DOMAIN=generated.example.invalid \
+            -e LEGAL_ENTITY_NAME= \
+            -v "$PWD/scripts/container_smoke.py:/app/backend/container_smoke.py:ro" \
+            wrenchrelay-ci python container_smoke.py
+      - name: Verify readiness with disposable MongoDB
+        run: |
+          docker network create wrenchrelay-ci
+          docker run -d --name wrenchrelay-ci-db --network wrenchrelay-ci mongo:7
+          docker run --rm --network wrenchrelay-ci \
+            -e MONGO_URL=mongodb://wrenchrelay-ci-db:27017 \
+            -e DB_NAME=wrenchrelay_ci \
+            -e SMOKE_REQUIRE_DATABASE=1 \
+            -e FRONTEND_URL=https://custom.example.invalid \
+            -e CORS_ORIGINS=https://custom.example.invalid \
+            -e RAILWAY_PUBLIC_DOMAIN=generated.example.invalid \
+            -v "$PWD/scripts/container_smoke.py:/app/backend/container_smoke.py:ro" \
+            wrenchrelay-ci python container_smoke.py
+      - name: Verify default startup command and PORT
+        run: |
+          docker run -d --name wrenchrelay-ci-app --network none -e PORT=8091 wrenchrelay-ci
+          docker exec -i wrenchrelay-ci-app python - <<'PY'
+          import time
+          import urllib.request
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:8091/api/health/live', timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  time.sleep(1)
+          else:
+              raise SystemExit('Default container command did not become live')
+          PY
+      - name: Clean up test resources
+        if: always()
+        run: |
+          docker rm -f wrenchrelay-ci-db wrenchrelay-ci-app || true
+          docker network rm wrenchrelay-ci || true
