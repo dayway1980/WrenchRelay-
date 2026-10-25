@@ -33,3 +33,7 @@ The wrench-relay preview returned an empty legal_entity despite the corrected mi
 Cloudflare's Workers build check still fails for the candidate. No authenticated build log was inspected in this review, so its cause is unconfirmed and separate from the successful Docker/Vercel builds.
 
 No production deployment, database write, DNS update, credential change or paid service was performed.
+
+## Source and recovery follow-up
+
+Historical i18n, portable 3.1.1 and production 3.3.0 source ZIPs were recovered and checksum-verified. The i18n version label matches live; exact runtime TGZ identity remains unproved. Synthetic tests confirmed incompatible password/token/account semantics with the GitHub MongoDB candidate. See SQLITE_RECOVERY_REHEARSAL.md for source provenance, the storage-preserving release direction, seven guarded-backup tests, and the successful historical-source account/work-order/session restore rehearsal. No live database was read or restored by those fixture tests.
