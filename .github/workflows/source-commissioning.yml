@@ -1,0 +1,36 @@
+name: Source commissioning
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'server.py'
+      - '.env.example'
+      - 'commission.py'
+      - '.github/workflows/source-commissioning.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'server.py'
+      - '.env.example'
+      - 'commission.py'
+      - '.github/workflows/source-commissioning.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify Python syntax
+        run: python -m compileall -q backend server.py commission.py
+      - name: Run dependency-free commissioning gates
+        run: python commission.py
