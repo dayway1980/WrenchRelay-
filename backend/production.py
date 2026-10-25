@@ -7,11 +7,11 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+# Railway's generated domain is only a fallback. Do not replace custom-domain
+# FRONTEND_URL or the configured list of allowed browser origins.
 railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
-if railway_domain:
-    public_url = f"https://{railway_domain}"
-    os.environ["CORS_ORIGINS"] = public_url
-    os.environ["FRONTEND_URL"] = public_url
+if railway_domain and not os.environ.get("FRONTEND_URL"):
+    os.environ["FRONTEND_URL"] = f"https://{railway_domain}"
 
 from server import app
 
