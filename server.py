@@ -491,6 +491,70 @@ def stripe_price(plan: str):
     return None
 
 
+def _stripe_plan_from_subscription(subscription):
+    """A Stripe-confirmed recurring Price, not caller metadata, determines the plan."""
+    items = (subscription.get("items") or {}).get("data") or []
+    price_ids = {item.get("price", {}).get("id") for item in items if item.get("price")}
+    for plan in ("starter", "pro"):
+        configured_price = stripe_price(plan)
+        if configured_price and configured_price in price_ids:
+            return plan
+    return None
+
+
+def _sync_stripe_subscription(db, subscription, expected_email=None, expected_customer=None):
+    """Idempotent snapshot reconciliation: never promote from an unverified price/status."""
+    subscription_id = subscription.get("id")
+    customer_id = subscription.get("customer")
+    status_value = subscription.get("status", "unknown")
+    if not subscription_id or not customer_id:
+        return False
+    if expected_customer and expected_customer != customer_id:
+        return False
+    existing = db.users.find_one({"stripe_subscription_id": subscription_id})
+    if not existing:
+        existing = db.users.find_one({"stripe_customer_id": customer_id})
+    if not existing and expected_email:
+        existing = db.users.find_one({"email": expected_email.lower()})
+    if not existing:
+        return False
+    if existing.get("stripe_customer_id") and existing["stripe_customer_id"] != customer_id:
+        return False
+    # Ignore stale events from a replaced subscription; checkout explicitly
+    # supplies the authenticated buyer email when activating a new one.
+    previous_subscription = existing.get("stripe_subscription_id")
+    if previous_subscription and previous_subscription != subscription_id and not expected_email:
+        return False
+    # Never downgrade the employer-funded lifetime entitlement.
+    email = existing.get("email", "")
+    if is_brava(email):
+        return True
+    mapped_plan = _stripe_plan_from_subscription(subscription)
+    if not mapped_plan:
+        return False
+    if status_value not in {"active", "trialing"}:
+        mapped_plan = "free"
+    db.users.update_one(
+        {"_id": existing["_id"]},
+        {"$set": {
+            "plan": mapped_plan,
+            "stripe_customer_id": customer_id,
+            "stripe_subscription_id": subscription_id,
+            "stripe_subscription_status": status_value,
+            "stripe_subscription_updated_at": utcnow(),
+        }},
+    )
+    return True
+
+
+def _invoice_subscription_id(invoice):
+    """Supports both classic and newer Stripe invoice event shapes."""
+    return (
+        invoice.get("subscription")
+        or ((invoice.get("parent") or {}).get("subscription_details") or {}).get("subscription")
+    )
+
+
 @app.post("/api/billing/checkout")
 def billing_checkout(body: CheckoutRequest, request: Request, user=Depends(current_user)):
     if body.plan not in {"starter", "pro"}:
@@ -498,6 +562,8 @@ def billing_checkout(body: CheckoutRequest, request: Request, user=Depends(curre
     u = user_doc(user)
     if is_brava(user):
         raise HTTPException(409, "Brava Tile accounts already have Pro Lifetime access")
+    if u.get("stripe_subscription_id") and u.get("plan") not in {"free", None}:
+        raise HTTPException(409, "Manage your existing subscription in the billing portal")
     key = stripe_key()
     price = stripe_price(body.plan)
     if not stripe or not key or not price:
@@ -510,6 +576,7 @@ def billing_checkout(body: CheckoutRequest, request: Request, user=Depends(curre
         customer=u.get("stripe_customer_id") or None,
         client_reference_id=user,
         metadata={"email": user, "plan": body.plan},
+        subscription_data={"metadata": {"email": user, "plan": body.plan}},
         success_url=f"{FRONTEND_URL}/?billing=success",
         cancel_url=f"{FRONTEND_URL}/?billing=cancel",
         allow_promotion_codes=True,
@@ -524,36 +591,58 @@ def billing_portal(user=Depends(current_user)):
     if not stripe or not key or not u.get("stripe_customer_id"):
         raise HTTPException(503, "Billing portal is not available")
     stripe.api_key = key
-    s = stripe.billing_portal.Session.create(customer=u["stripe_customer_id"], return_url=f"{FRONTEND_URL}/")
-    return {"url": s.url}
+    session = stripe.billing_portal.Session.create(
+        customer=u["stripe_customer_id"],
+        return_url=f"{FRONTEND_URL}/",
+    )
+    return {"url": session.url}
 
 
 @app.post("/api/billing/webhook")
 async def billing_webhook(request: Request):
     if not stripe or not stripe_key():
         raise HTTPException(503, "Billing is not configured")
-    payload = await request.body()
-    signature = request.headers.get("stripe-signature", "")
-    secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    secret = os.getenv("STRIPE_WEBHOOK_SECRET")
     if not secret:
         raise HTTPException(503, "Stripe webhook verification is not configured")
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
     stripe.api_key = stripe_key()
     try:
         event = stripe.Webhook.construct_event(payload, signature, secret)
-    except Exception:
-        raise HTTPException(400, "Invalid webhook")
+    except Exception as exc:
+        raise HTTPException(400, "Invalid webhook") from exc
     db = require_db()
     obj = event["data"]["object"]
-    if event["type"] == "checkout.session.completed":
+    event_type = event["type"]
+    if event_type == "checkout.session.completed":
+        if obj.get("mode") != "subscription" or not obj.get("subscription"):
+            return {"received": True}
         email = (obj.get("metadata") or {}).get("email") or obj.get("client_reference_id")
-        plan = (obj.get("metadata") or {}).get("plan", "pro")
-        if email:
-            db.users.update_one({"email": email.lower()}, {"$set": {"plan": plan, "stripe_customer_id": obj.get("customer"), "stripe_subscription_id": obj.get("subscription")}})
-    elif event["type"] in {"customer.subscription.deleted", "customer.subscription.paused"}:
-        sub_id = obj.get("id")
-        u = db.users.find_one({"stripe_subscription_id": sub_id})
-        if u and not is_brava(u.get("email", "")):
-            db.users.update_one({"_id": u["_id"]}, {"$set": {"plan": "free"}})
+        if email and not is_brava(email):
+            subscription = stripe.Subscription.retrieve(obj["subscription"])
+            _sync_stripe_subscription(
+                db, subscription,
+                expected_email=email,
+                expected_customer=obj.get("customer"),
+            )
+    elif event_type in {
+        "customer.subscription.created",
+        "customer.subscription.updated",
+        "customer.subscription.deleted",
+        "customer.subscription.paused",
+        "invoice.paid",
+        "invoice.payment_failed",
+    }:
+        if event_type.startswith("invoice."):
+            subscription_id = _invoice_subscription_id(obj)
+        else:
+            subscription_id = obj.get("id")
+        if subscription_id:
+            # Fetch current Stripe truth so out-of-order and duplicate events
+            # cannot restore a canceled plan from a stale webhook snapshot.
+            subscription = stripe.Subscription.retrieve(subscription_id)
+            _sync_stripe_subscription(db, subscription)
     return {"received": True}
 
 
