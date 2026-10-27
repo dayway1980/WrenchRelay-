@@ -20,6 +20,7 @@ import urllib.parse
 import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Protocol
 
@@ -452,11 +453,11 @@ class Recovery:
                        (obj["id"], account, obj["customer"], status, price, period, now, now + (86400 if status in ("canceled", "incomplete_expired") else 300)))
             if write_current:
                 db.execute("INSERT INTO billing_accounts(account_id,stripe_customer_id,stripe_subscription_id,status,price_id,current_period_end,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET stripe_customer_id=excluded.stripe_customer_id,stripe_subscription_id=excluded.stripe_subscription_id,status=excluded.status,price_id=excluded.price_id,current_period_end=excluded.current_period_end,updated_at=excluded.updated_at",
-                           (account, obj["customer"], obj["id"], status, price, str(period), str(now)))
+                           (account, obj["customer"], obj["id"], status, price, str(period), datetime.fromtimestamp(now, timezone.utc).isoformat()))
             if intent:
                 db.execute("UPDATE wr_payment_intents SET state='done' WHERE id=?", (metadata.get("wr_checkout_id"),))
             if event["id"].startswith("evt_"):
-                db.execute("INSERT OR IGNORE INTO stripe_events VALUES(?,?,?)", (event["id"], event["type"], str(now)))
+                db.execute("INSERT OR IGNORE INTO stripe_events VALUES(?,?,?)", (event["id"], event["type"], datetime.fromtimestamp(now, timezone.utc).isoformat()))
             db.execute("UPDATE wr_payment_inbox SET state='done',error=NULL WHERE id=?", (event["id"],))
             db.execute("UPDATE wr_payment_worker SET heartbeat=?,until_at=? WHERE id=1 AND token=?", (now, now + 120, token))
             db.commit()
@@ -480,7 +481,8 @@ class Recovery:
         now = int(self.clock())
         with self.connection() as db:
             row = db.execute("SELECT s.* FROM wr_payment_subscriptions s JOIN billing_accounts b ON b.stripe_subscription_id=s.id AND b.account_id=s.account_id WHERE s.account_id=?", (account_id,)).fetchone()
-        return {"active": bool(row and row["status"] in ("active", "trialing") and row["period_end"] > now
+            legacy = db.execute("SELECT * FROM billing_accounts WHERE account_id=?", (account_id,)).fetchone()
+        return {**(dict(legacy) if legacy else {}), "active": bool(row and row["status"] in ("active", "trialing") and row["period_end"] > now
                                and row["verified_at"] >= now - 900),
                 "status": row["status"] if row else "unverified", "price_id": row["price_id"] if row else None}
 

@@ -138,6 +138,10 @@ class Tests(unittest.TestCase):
         self.bind(); self.receive()
         self.assertEqual(self.r.run_once(), 1)
         self.assertTrue(self.r.entitlement("a")["active"])
+        from datetime import datetime
+        verified = self.r.entitlement("a")
+        self.assertEqual(int(datetime.fromisoformat(verified["updated_at"]).timestamp()), self.now)
+        self.assertEqual(verified["stripe_customer_id"], "cus_fixture")
         self.assertFalse(self.r.entitlement("b")["active"])
         self.api.subscription["status"] = "canceled"
         self.receive(eid="evt_cancel")
