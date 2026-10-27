@@ -516,6 +516,11 @@ def _sync_stripe_subscription(db, subscription, expected_email=None, expected_cu
         return False
     if existing.get("stripe_customer_id") and existing["stripe_customer_id"] != customer_id:
         return False
+    # Ignore stale events from a replaced subscription; checkout explicitly
+    # supplies the authenticated buyer email when activating a new one.
+    previous_subscription = existing.get("stripe_subscription_id")
+    if previous_subscription and previous_subscription != subscription_id and not expected_email:
+        return False
     # Never downgrade the employer-funded lifetime entitlement.
     email = existing.get("email", "")
     if is_brava(email):
