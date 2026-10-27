@@ -1,0 +1,33 @@
+name: Payment recovery
+on:
+  pull_request:
+    paths:
+      - 'services/payment-recovery/**'
+      - '.github/workflows/payment-recovery.yml'
+  push:
+    branches: [main, 'fix/payment-recovery-20261027']
+    paths:
+      - 'services/payment-recovery/**'
+      - '.github/workflows/payment-recovery.yml'
+permissions:
+  contents: read
+jobs:
+  payment-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/payment-recovery
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install pinned test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-tests.txt
+      - name: Compile Python integration and recovery code
+        run: python -m compileall -q recovery.py integration.py bootstrap.py
+      - name: Verify real SQLite transactions and synthetic Stripe boundaries
+        run: python -m unittest discover -s tests -v
