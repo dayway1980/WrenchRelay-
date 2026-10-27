@@ -134,7 +134,11 @@ class WebhookContractTests(unittest.IsolatedAsyncioTestCase):
             "_id": "db_id_1", "email": "member@example.com", "plan": "free",
             "stripe_customer_id": None, "stripe_subscription_id": None,
         }))
-        with patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": "whsec_fake"}), \
+        with patch.dict(os.environ, {
+             "STRIPE_WEBHOOK_SECRET": "whsec_fake",
+             "STRIPE_PRICE_WRENCH_STARTER": "price_test_starter",
+             "STRIPE_PRICE_WRENCH_PRO": "price_test_pro",
+        }), \
              patch.object(server, "stripe_key", return_value="sk_test_fake"), \
              patch.object(server.stripe.Webhook, "construct_event", return_value=event), \
              patch.object(server.stripe.Subscription, "retrieve", return_value=subscription()), \
