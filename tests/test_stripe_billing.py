@@ -130,17 +130,18 @@ class WebhookContractTests(unittest.IsolatedAsyncioTestCase):
         }
         request = SimpleNamespace(body=AsyncMock(return_value=b'{"fake":true}'),
                                   headers={"stripe-signature": "test_signature"})
+        fake_db = SimpleNamespace(users=FakeUsers({
+            "_id": "db_id_1", "email": "member@example.com", "plan": "free",
+            "stripe_customer_id": None, "stripe_subscription_id": None,
+        }))
         with patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": "whsec_fake"}), \
              patch.object(server, "stripe_key", return_value="sk_test_fake"), \
              patch.object(server.stripe.Webhook, "construct_event", return_value=event), \
              patch.object(server.stripe.Subscription, "retrieve", return_value=subscription()), \
-             patch.object(server, "require_db", return_value=SimpleNamespace(users=FakeUsers({
-                 "_id": "db_id_1", "email": "member@example.com", "plan": "free",
-                 "stripe_customer_id": None, "stripe_subscription_id": None,
-             }))) as db:
+             patch.object(server, "require_db", return_value=fake_db):
             response = await server.billing_webhook(request)
         self.assertTrue(response["received"])
-        self.assertEqual(db.users.record["plan"], "starter")
+        self.assertEqual(fake_db.users.record["plan"], "starter")
 
 
 if __name__ == "__main__":
