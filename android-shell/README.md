@@ -54,3 +54,57 @@ then verify package, certificate digest, versionCode, and target API.
    privacy/retention, crash reporting and poor network performance.
 8. Configure internal testers and test for failures; only then submit Play review.
    Preserve screenshots, test dates, checksums, and rollback/recovery instructions.
+
+
+## Owner-controlled Play internal signing workflow (no auto-publish)
+
+The manual GitHub Actions workflow `.github/workflows/android-play-internal-candidate.yml`
+builds the exact source revision after package identity and versionCode are verified
+against **the actual WrenchRelay Industrial Play Console app**. It signs the
+Android App Bundle with the **existing** owner-controlled upload certificate,
+compares that certificate's SHA-256 fingerprint with the owner's Play Console
+App integrity fingerprint, and creates a seven-day signed candidate artifact.
+It never uses a debug key or uploads to Play. If inputs/secrets are missing or
+the certificate does not match, the workflow fails closed.
+
+**Before pressing Run workflow:**
+1. Sign in to the existing IdeasApplied Play Console account. Locate the
+   actual WrenchRelay Industrial app; do not infer package identity from a name,
+   developer-account link, or draft listing. Read package, highest versionCode,
+   upload certificate SHA-256, signing-key status and account verification status.
+2. Check whether an existing upload keystore is owner-held or builder-held.
+   If the app is already associated with a different upload certificate, follow
+   the official Play Console upload-key reset process; never invent or overwrite
+   its original keystore. Do not reuse the Android debug key.
+3. Create the GitHub repository environment named `play-internal-signing`.
+   Put the current upload keystore and credentials in these protected secrets:
+   `PLAY_UPLOAD_KEYSTORE_B64` (base64-encoded keystore bytes),
+   `PLAY_STORE_PASSWORD`, `PLAY_KEY_PASSWORD`, `PLAY_KEY_ALIAS`.
+   Do not put a keystore, private key, tokens or passwords in source, issues,
+   chat messages, logs or artifacts. Use environment protection/reviewers if
+   available. Do not create a paid plan just for this.
+4. Under GitHub Actions, choose **Android Play internal signing candidate**
+   on this vetted branch, `Run workflow`, and supply the verified package
+   (one of the two historical candidates), a **new unused** versionCode,
+   the public SHA-256 upload certificate fingerprint and the exact operator
+   confirmation phrase displayed in the workflow.
+5. Inspect the signed artifact, certificate and checksum. After real-device
+   tests and store-content compliance checks, upload that artifact to the
+   existing app's **Internal testing** track in Play Console. Do not use
+   Production, or create another package, without an approved release.
+6. If a personal developer account was created after November 13, 2023,
+   check whether Google's separate minimum 12 continuously opted-in
+   closed testers for 14 days applies before requesting Production access.
+
+**Other mandatory gates:** verify independent Android authentication/
+Google sign-in, real-device voice/file picker, working account deletion
+operations and Data safety declarations. In particular, a WebView showing
+paid SaaS checkout may trigger Google Play's digital-services Payments policy.
+Do not enable in-app Stripe checkout or link to outside payment until the
+specific Play Billing/eligible alternative-billing policy path is approved.
+The disabled current checkout is not evidence of permanent compliance.
+Protect and preserve the live Railway SQLite app and Stripe webhook while
+testing this separately built MongoDB candidate.
+
+The workflow has no Google Play Publisher service-account access and performs
+no upload, submission, production deployment, app-store purchase or charge.
