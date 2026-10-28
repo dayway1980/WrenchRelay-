@@ -1,0 +1,83 @@
+name: Security candidate container smoke
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'backend/**'
+      - 'server.py'
+      - 'requirements.txt'
+      - 'package.json'
+      - 'src/**'
+      - 'public/**'
+      - '.github/workflows/security-candidate-container.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build candidate image (no registry push)
+        run: docker build --pull --tag wrenchrelay-security-ci .
+      - name: Validate installed package compatibility
+        run: docker run --rm --network none wrenchrelay-security-ci python -m pip check
+      - name: Verify image entrypoint, static assets and fail-closed readiness offline
+        run: |
+          docker run --rm --network none \
+            -e MONGO_URL= -e MONGODB_URI= \
+            -e RAILWAY_PUBLIC_DOMAIN= \
+            -e JWT_SECRET= \
+            -e STRIPE_SECRET_KEY= \
+            -e STRIPE_WEBHOOK_SECRET= \
+            wrenchrelay-security-ci python -c '
+          import importlib.util
+          from pathlib import Path
+          from fastapi.testclient import TestClient
+          spec = importlib.util.find_spec("production")
+          assert spec and Path(spec.origin) == Path("/app/backend/production.py"), "wrong entrypoint"
+          import production
+          assert Path("/app/frontend/build/index.html").is_file(), "missing frontend build"
+          assert list(Path("/app/frontend/build/static").rglob("*.js")), "missing JS assets"
+          with TestClient(production.app) as client:
+              assert client.get("/api/health/live").status_code == 200, "liveness failure"
+              ready = client.get("/api/health/ready")
+              assert ready.status_code == 503, f"unconfigured database incorrectly marked ready: {ready.status_code}"
+              assert client.get("/").status_code == 200, "frontend unavailable"
+          print("PASS: exact container entrypoint; frontend; liveness; missing DB fails closed")
+          '
+      - name: Verify isolated disposable MongoDB readiness (no customer data)
+        run: |
+          docker network create wrenchrelay-security-ci
+          docker run -d --name wrenchrelay-security-ci-db --network wrenchrelay-security-ci mongo:7
+          docker run --rm --network wrenchrelay-security-ci \
+            -e MONGO_URL=mongodb://wrenchrelay-security-ci-db:27017 \
+            -e DB_NAME=wrenchrelay_ci \
+            -e RAILWAY_PUBLIC_DOMAIN= \
+            -e JWT_SECRET= \
+            -e STRIPE_SECRET_KEY= \
+            -e STRIPE_WEBHOOK_SECRET= \
+            wrenchrelay-security-ci python -c '
+          import time
+          from fastapi.testclient import TestClient
+          import production
+          with TestClient(production.app) as client:
+              for i in range(30):
+                  response = client.get("/api/health/ready")
+                  if response.status_code == 200:
+                      assert response.json().get("database") == "ok", response.text
+                      print("PASS: isolated database readiness")
+                      break
+                  time.sleep(1)
+              else:
+                  raise AssertionError(f"disposable MongoDB never became ready: {response.status_code}")
+          '
+      - name: Clean up isolated containers
+        if: always()
+        run: |
+          docker rm -f wrenchrelay-security-ci-db || true
+          docker network rm wrenchrelay-security-ci || true
