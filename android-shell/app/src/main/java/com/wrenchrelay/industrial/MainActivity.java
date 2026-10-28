@@ -1,6 +1,7 @@
 package com.wrenchrelay.industrial;
 
 import android.Manifest;
+import androidx.appcompat.app.AlertDialog;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -15,10 +16,14 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import android.widget.Button;
+import android.widget.LinearLayout;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
   private static final String HOME = "https://wrenchrelayllc.com/";
+  private static final String PRIVACY_URL = "https://wrenchrelayllc.com/privacy";
+  private static final String DELETE_ACCOUNT_URL = "https://wrenchrelayllc.com/delete-account";
   private static final int REQUEST_MICROPHONE = 401;
   private static final int REQUEST_FILE_PICKER = 402;
   private WebView web;
@@ -27,8 +32,18 @@ public class MainActivity extends AppCompatActivity {
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
+    LinearLayout screen = new LinearLayout(this);
+    screen.setOrientation(LinearLayout.VERTICAL);
+    Button accountSettings = new Button(this);
+    accountSettings.setText("Privacy and account deletion");
+    accountSettings.setContentDescription("Open privacy policy or request account deletion");
+    accountSettings.setOnClickListener(view -> showPrivacyAndAccountOptions());
+    screen.addView(accountSettings, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
     web = new WebView(this);
-    setContentView(web);
+    screen.addView(web, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+    setContentView(screen);
     WebSettings settings = web.getSettings();
     settings.setJavaScriptEnabled(true);
     settings.setDomStorageEnabled(true);
@@ -79,6 +94,29 @@ public class MainActivity extends AppCompatActivity {
     });
 
     if (state == null || web.restoreState(state) == null) web.loadUrl(HOME);
+  }
+
+  private void showPrivacyAndAccountOptions() {
+    new AlertDialog.Builder(this)
+        .setTitle("Privacy and account")
+        .setItems(new String[]{"Read privacy policy", "Request account deletion"}, (dialog, which) ->
+            openAccountPage(which == 0 ? PRIVACY_URL : DELETE_ACCOUNT_URL))
+        .setNegativeButton("Cancel", null)
+        .show();
+  }
+
+  private void openAccountPage(String url) {
+    if (!WebHostPolicy.isTrustedHttps(url)) {
+      Toast.makeText(this, "This account link is unavailable", Toast.LENGTH_SHORT).show();
+      return;
+    }
+    try {
+      Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+      intent.addCategory(Intent.CATEGORY_BROWSABLE);
+      startActivity(intent);
+    } catch (ActivityNotFoundException | SecurityException exception) {
+      Toast.makeText(this, "Unable to open account page", Toast.LENGTH_LONG).show();
+    }
   }
 
   private void handleWebPermission(PermissionRequest request) {
