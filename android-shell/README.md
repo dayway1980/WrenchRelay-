@@ -27,6 +27,10 @@ Changing an existing Play package name is not an update; it creates another app.
 - The host URL currently defaults to https://wrenchrelayllc.com/. Confirm that this
   points to the intended Industrial workflow and that all subsequent flows work.
 
+## In-app privacy and deletion
+
+The Android shell now contains a persistent native "Privacy and account deletion" control above the WebView. It opens first-party HTTPS policy or deletion-request pages in an external browser; no user credentials are embedded in a URL. The deletion page currently initiates an email-based, verified human request, **not automatic erasure**. Play policy compliance still requires operator evidence of the completed deletion process and accurate retention disclosures, and a physical-device check of this control.
+
 ## Signing HOLD
 
 GitHub Actions builds a debug APK and an **unsigned** release AAB. Neither
@@ -36,7 +40,7 @@ then verify package, certificate digest, versionCode, and target API.
 
 ## Required commissioning before internal-test rollout
 
-1. Verify live HTTPS DNS/routing, industrial selection, auth, account deletion,
+1. Verify live HTTPS DNS/routing, industrial selection, auth, native deletion control and its email request handling,
    privacy-policy URL, support email and accurate Data Safety declarations.
 2. Confirm expected package and existing Play versionCode/certificate.
 3. Build/review signed AAB with protected upload key; never reuse any other app's key.
