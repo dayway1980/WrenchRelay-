@@ -1,0 +1,40 @@
+# WrenchRelay pilot acceptance protocol
+
+Status: proposed acceptance criteria. No live connector or pilot validated. Existing CMMS remains system of record. No vendor writes enabled. Current CMMS skeleton unavailable in this workspace; integration pending source recovery.
+
+## First assumption
+
+Technicians can capture and review a useful maintenance record faster and with less effort than their existing workflow, without reducing factual accuracy. Test on authorized historical cases or staged jobs before influencing live diagnosis.
+
+## Evaluation design
+
+One plant, one equipment family, one maintenance-manager sponsor, 3-5 consenting technicians as an initial discovery sample, not a statistical sufficiency claim. Obtain written authorization covering records, users, purpose, retention, residency and removal. Use de-identified case IDs. Do not commit customer records or audio. Obtain lawful access to manuals and plant knowledge; no cross-customer pooling by default.
+
+Start with 10-20 authorized historical cases if available. Split by asset and time to avoid near-duplicate leakage. Freeze ranking configuration before held-out review. For simulated paired tasks, counterbalance order and use different matched cases to reduce learning effects. Record interrupted/abandoned sessions and exclusions with reasons. Report all denominators, missing timings, errors, adverse suggestions, reviewer disagreement, abstentions and regressions. Report diagnosis/repair elapsed time only when actually observed and its start/end definition is fixed; documentation timing is not MTTR. Technician and independent senior reviewer resolve labels without rewriting original observations. Do not calculate a synthetic confidence percentage as a clinical-style probability.
+
+scripts/pilot_evaluation.py produces descriptive reviewed-case aggregates only. Authorization flags are assertions, not an access-control or consent system. The input must come from an authenticated, authorized export process. Separate tenant and synthetic/pilot datasets. No causal ROI conclusion from this utility alone.
+
+## Three engineering increments
+
+1. Durable proposal ledger: SQLite on persistent local disk for a single isolated Python instance. Tables: proposals(tenant_id,id,actor_id,connector,asset_id,target_revision,payload_hash,before_image,rollback_plan,status,expires_at), approvals(tenant_id,proposal_id,approver_id,token_hash,expires_at,consumed_at), events(tenant_id,id,proposal_id,actor_id,action,created_at,payload_hash), attempts(tenant_id,proposal_id,idempotency_key,status,vendor_request_id,result_hash). Composite tenant foreign keys and unique(tenant_id,idempotency_key). Derive actor/tenant from authenticated context, never client payload alone. Approval binds exact canonical payload, target revision and tenant; edits invalidate approval. Store token hash only, expire and consume atomically. Use BEGIN IMMEDIATE for state transitions. No network write inside the database transaction. Record dispatch intent before external execution. Crash after dispatch becomes UNKNOWN and requires reconciliation, never blind retry. SQLite alone cannot guarantee exactly-once vendor effects or tamper-proof audit against a host administrator. Restrict audit updates/deletion and export protected audit copies.
+
+Tests: restart preserves approvals/events; wrong tenant/role/expired/replayed token denied; changed payload or target revision denied; concurrent approval dispatches at most one intent; crash before/after simulated vendor response leaves reconcilable state. Rollback is a new approved compensating proposal with current revision checks, not an automatic undo. Unsupported irreversible operations remain disabled. Expected outcome: technician sees exactly what was approved and what happened.
+
+2. Fiix sandbox read adapter: require authorized sandbox URL and least-privilege Find-only credentials, allowlisted Asset/WorkOrder fields, explicit site scope and approved retention. Reads use POST, so deny by request class/operation, not HTTP verb. Block Add/Change/Remove/RPC/batch/upload initially. Sign exact wire URL using official HMAC scheme; TLS verification, bounded timeouts, redirect denial, tenant-specific rate budgeting, bounded retries for reads only, pagination and stale/version evidence. Store credentials outside records/logs; redact signed URLs and authorization. Verify credential-to-tenant mapping at provisioning. Sandbox access/plan eligibility must be confirmed by customer or Fiix. No production URL fallback.
+
+Tests: official signing fixture; unknown request denied before transport; pagination loop/duplicate handling; 429/backoff and cross-tenant quota separation; timeout/TLS/redirect failure; wrong site/asset ID and stale timestamp abstain. Expected outcome: correct asset history with traceable source, no writes.
+
+3. Voice and evidence review: explicit tap-to-talk first, visible recording indicator, stop/pause/resume, editable transcript, structured text fallback. No continuous ambient recording. Capture raw observation separately from inference. Require confirmation for asset ID, measurements/units, negation and safety state; never silently infer missing units. Summarize changed facts rather than rereading the entire record. Label diagnosis UNRESOLVED until human confirmation, retaining original system hypotheses. Show each hypothesis with supporting/contradicting evidence, age, next discriminating check and plain-language evidence strength; numeric score is a ranking heuristic until calibrated. Abstain on wrong asset, stale critical facts, missing evidence or contradictory safety state. Human confirmation must not erase uncertainty history.
+
+Tests: noisy synthetic transcript, swapped asset, negation, interrupted utterance, repeated input, correction, offline/API outage and glove-friendly structured workflow. Expected outcome: technician can recover without losing approved facts and understands unresolved status.
+
+## 90-day sequence
+
+Days 1-14: locate canonical skeleton; agree one workflow and sponsor; obtain authorized sandbox; freeze evaluation definitions; prototype capture/review with synthetic data; implement durable ledger in isolation. No write executor.
+Days 15-30: sandbox Find-only acceptance; signed requests and source timestamps; permission/tenant tests; test backups and restoration; run 3-5 technician usability sessions if volunteers authorize them. Gate: correct asset and evidence trail, no unauthorized calls, recoverable data.
+Days 31-60: authorized historical replay then supervised shadow use; frozen held-out evaluation; review failures weekly. Keep CMMS unchanged. Measure task completion, correction burden, repeat use and observed task times. Gate: manager and technicians accept usefulness and safety; no invented success threshold after results.
+Days 61-90: one-plant paid-pilot proposal with defined users/assets, support scope, export, cancellation and success review. Agree a minimum worthwhile time improvement with manager before collecting comparative data. Keep read-only through pilot unless separate explicit acceptance authorizes later write scope. Expand eMaint implementation only after Fiix workflow acceptance or a funded, authorized eMaint design partner changes priority.
+
+## Commercial hypothesis
+
+Smallest package: correct asset history, reviewed voice-to-work-order draft, evidence-linked next checks and handoff. Price per plant with a defined active-user allowance; avoid per-utterance pricing. Price is unvalidated: test willingness to pay in sponsor interviews, not by claiming market fit. Estimate value from measured task minutes saved x documented task volume x agreed loaded hourly cost / 60; show assumptions and uncertainty. Do not count unverified downtime prevention. Track inference, transcription, hosting, support and onboarding cost per plant. No new service until measured limits justify it. Keep one Python service and portable persistence initially; move to PostgreSQL when multiple writers, proven contention, regional requirements or measured load require it.
