@@ -7,6 +7,8 @@ import org.junit.Test;
 public class WebHostPolicyTest {
   @Test public void acceptsOnlyTrustedSecureOrigins() {
     assertTrue(WebHostPolicy.isTrustedHttps("https://wrenchrelayllc.com/"));
+    assertTrue(WebHostPolicy.isTrustedHttps("https://wrenchrelayllc.com/privacy"));
+    assertTrue(WebHostPolicy.isTrustedHttps("https://wrenchrelayllc.com/delete-account"));
     assertTrue(WebHostPolicy.isTrustedHttps("https://www.wrenchrelayllc.com/industrial"));
     assertTrue(WebHostPolicy.isTrustedHttps("https://app.wrenchrelayllc.com/"));
     assertFalse(WebHostPolicy.isTrustedHttps("http://wrenchrelayllc.com"));
