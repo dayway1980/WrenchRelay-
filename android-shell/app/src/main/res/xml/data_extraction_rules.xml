@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+  <!-- Account and WebView data stay out of cloud backup and device-to-device transfer. -->
+  <cloud-backup>
+    <exclude domain="root" path="."/>
+  </cloud-backup>
+  <device-transfer>
+    <exclude domain="root" path="."/>
+  </device-transfer>
+</data-extraction-rules>

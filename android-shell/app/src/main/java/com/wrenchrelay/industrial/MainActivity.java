@@ -35,8 +35,8 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout screen = new LinearLayout(this);
     screen.setOrientation(LinearLayout.VERTICAL);
     Button accountSettings = new Button(this);
-    accountSettings.setText("Privacy and account deletion");
-    accountSettings.setContentDescription("Open privacy policy or request account deletion");
+    accountSettings.setText(R.string.account_settings);
+    accountSettings.setContentDescription(getString(R.string.account_settings_content_description));
     accountSettings.setOnClickListener(view -> showPrivacyAndAccountOptions());
     screen.addView(accountSettings, new LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -71,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
         } catch (ActivityNotFoundException | SecurityException exception) {
           pendingFiles.onReceiveValue(null);
           pendingFiles = null;
-          Toast.makeText(MainActivity.this, "File picker unavailable", Toast.LENGTH_SHORT).show();
+          Toast.makeText(MainActivity.this, getString(R.string.file_picker_unavailable), Toast.LENGTH_SHORT).show();
           return false;
         }
       }
@@ -87,7 +87,7 @@ public class MainActivity extends AppCompatActivity {
         try {
           startActivity(new Intent(Intent.ACTION_VIEW, destination));
         } catch (ActivityNotFoundException | SecurityException exception) {
-          Toast.makeText(MainActivity.this, "Unable to open link", Toast.LENGTH_SHORT).show();
+          Toast.makeText(MainActivity.this, getString(R.string.open_failed), Toast.LENGTH_SHORT).show();
         }
         return true;
       }
@@ -98,16 +98,16 @@ public class MainActivity extends AppCompatActivity {
 
   private void showPrivacyAndAccountOptions() {
     new AlertDialog.Builder(this)
-        .setTitle("Privacy and account")
-        .setItems(new String[]{"Read privacy policy", "Request account deletion"}, (dialog, which) ->
+        .setTitle(R.string.account_dialog_title)
+        .setItems(new String[]{getString(R.string.privacy_action), getString(R.string.deletion_action)}, (dialog, which) ->
             openAccountPage(which == 0 ? PRIVACY_URL : DELETE_ACCOUNT_URL))
-        .setNegativeButton("Cancel", null)
+        .setNegativeButton(R.string.cancel, null)
         .show();
   }
 
   private void openAccountPage(String url) {
     if (!WebHostPolicy.isTrustedHttps(url)) {
-      Toast.makeText(this, "This account link is unavailable", Toast.LENGTH_SHORT).show();
+      Toast.makeText(this, getString(R.string.link_unavailable), Toast.LENGTH_SHORT).show();
       return;
     }
     try {
@@ -115,7 +115,7 @@ public class MainActivity extends AppCompatActivity {
       intent.addCategory(Intent.CATEGORY_BROWSABLE);
       startActivity(intent);
     } catch (ActivityNotFoundException | SecurityException exception) {
-      Toast.makeText(this, "Unable to open account page", Toast.LENGTH_LONG).show();
+      Toast.makeText(this, getString(R.string.open_failed), Toast.LENGTH_LONG).show();
     }
   }
 
@@ -153,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
       request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
     } else {
       request.deny();
-      Toast.makeText(this, "Microphone unavailable; use text input instead", Toast.LENGTH_LONG).show();
+      Toast.makeText(this, getString(R.string.microphone_fallback), Toast.LENGTH_LONG).show();
     }
   }
 
