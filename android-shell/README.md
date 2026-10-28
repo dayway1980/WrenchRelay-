@@ -83,8 +83,13 @@ the certificate does not match, the workflow fails closed.
    Do not put a keystore, private key, tokens or passwords in source, issues,
    chat messages, logs or artifacts. Use environment protection/reviewers if
    available. Do not create a paid plan just for this.
-4. Under GitHub Actions, choose **Android Play internal signing candidate**
-   on this vetted branch, `Run workflow`, and supply the verified package
+4. GitHub requires a manually dispatched workflow definition to exist on the
+   repository's **default branch**. This signing workflow is currently staged
+   on PR #14 and is therefore **not yet manually runnable**. Following code
+   review, place only the vetted signing workflow on `main` without deploying
+   the incompatible application backend. Then choose **Android Play internal
+   signing candidate**, select the vetted source branch, click `Run workflow`,
+   and supply the verified package
    (one of the two historical candidates), a **new unused** versionCode,
    the public SHA-256 upload certificate fingerprint and the exact operator
    confirmation phrase displayed in the workflow.
