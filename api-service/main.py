@@ -2,6 +2,9 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import urlsplit
+
+from starlette.responses import JSONResponse
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -144,7 +147,8 @@ def is_brava(email: str) -> bool:
 def token_for(email: str):
     if not JWT_SECRET:
         raise HTTPException(503, "Authentication is not configured")
-    return jwt.encode({"sub": email.lower(), "exp": utcnow() + timedelta(days=7)}, JWT_SECRET, algorithm=JWT_ALG)
+    account = require_db().users.find_one({"email": email.lower()}) or {}
+    return jwt.encode({"sub": email.lower(), "exp": utcnow() + timedelta(days=7), "session_epoch": account.get("session_epoch", "")}, JWT_SECRET, algorithm=JWT_ALG)
 
 
 def current_user(request: Request, authorization: Optional[str] = Header(default=None)):
@@ -156,8 +160,16 @@ def current_user(request: Request, authorization: Optional[str] = Header(default
     if not token:
         raise HTTPException(401, "Not authenticated")
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-        return payload["sub"]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG], options={"require_exp": True, "require_sub": True})
+        email = payload["sub"]
+        if not isinstance(email, str) or not email.strip():
+            raise JWTError("Missing subject")
+        account = require_db().users.find_one({"email": email.lower()})
+        if not account:
+            raise JWTError("Account unavailable")
+        if payload.get("session_epoch", "") != account.get("session_epoch", ""):
+            raise JWTError("Session revoked")
+        return email.lower()
     except JWTError:
         raise HTTPException(401, "Invalid or expired token")
 
@@ -178,8 +190,10 @@ def require_db():
 def entitlement_for(user_doc: dict) -> dict:
     email = user_doc.get("email", "")
     plan = user_doc.get("plan", "free")
-    if is_brava(email):
+    if is_brava(email) and user_doc.get("email_verified") is True:
         plan = "pro_lifetime"
+    elif plan == "pro_lifetime":
+        plan = "free"
     created = user_doc.get("created_at") or utcnow()
     if getattr(created, "tzinfo", None) is None:
         created = created.replace(tzinfo=timezone.utc)
@@ -201,7 +215,7 @@ def user_doc(email: str) -> dict:
     u = db.users.find_one({"email": email.lower()})
     if not u:
         raise HTTPException(404, "Account not found")
-    if is_brava(email) and u.get("plan") != "pro_lifetime":
+    if is_brava(email) and u.get("email_verified") is True and u.get("plan") != "pro_lifetime":
         db.users.update_one({"email": email.lower()}, {"$set": {"plan": "pro_lifetime", "brava_lifetime": True}})
         u["plan"] = "pro_lifetime"
         u["brava_lifetime"] = True
@@ -260,8 +274,24 @@ def mode_context(mode: str) -> str:
     )
 
 
+def normalized_origin(value: str):
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            return None
+        return (parsed.scheme, parsed.hostname.lower(), parsed.port or (443 if parsed.scheme == "https" else 80))
+    except ValueError:
+        return None
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and request.cookies.get(SESSION_COOKIE):
+        origin = request.headers.get("origin")
+        # Match parsed origins, never prefixes such as trusted.example.attacker.test.
+        allowed = {normalized_origin(value) for value in [FRONTEND_URL, *origins]}
+        if not origin or normalized_origin(origin) not in allowed - {None}:
+            return JSONResponse({"detail": "Untrusted request origin"}, status_code=403)
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
@@ -331,14 +361,15 @@ def register(body: Register, response: Response):
     email = body.email.lower()
     if db.users.find_one({"email": email}):
         raise HTTPException(409, "Account already exists")
-    plan = "pro_lifetime" if is_brava(email) else "free"
+    plan = "free"
     doc = {
         "email": email,
         "name": body.name.strip(),
         "password_hash": pwd.hash(body.password),
         "auth_method": "password",
+        "email_verified": False,
         "plan": plan,
-        "brava_lifetime": is_brava(email),
+        "brava_lifetime": False,
         "created_at": utcnow(),
         "usage": {},
     }
@@ -374,9 +405,14 @@ def google_login(body: GoogleCredential, response: Response):
     name = info.get("name", "")
     db = require_db()
     plan = "pro_lifetime" if is_brava(email) else "free"
+    existing = db.users.find_one({"email": email}) or {}
+    verified_fields = {"name": name, "auth_method": "google", "google_sub": info.get("sub"), "email_verified": True, "brava_lifetime": is_brava(email)}
+    if existing.get("email_verified") is not True:
+        # Revoke sessions and passwords created before ownership was proven.
+        verified_fields.update({"password_hash": None, "session_epoch": uuid.uuid4().hex})
     db.users.update_one(
         {"email": email},
-        {"$set": {"name": name, "auth_method": "google", "google_sub": info.get("sub"), "brava_lifetime": is_brava(email)},
+        {"$set": verified_fields,
          "$setOnInsert": {"created_at": utcnow(), "plan": plan, "usage": {}}},
         upsert=True,
     )
@@ -492,7 +528,7 @@ def billing_checkout(body: CheckoutRequest, request: Request, user=Depends(curre
     if body.plan not in {"starter", "pro"}:
         raise HTTPException(400, "Unknown plan")
     u = user_doc(user)
-    if is_brava(user):
+    if entitlement_for(u)["plan"] == "pro_lifetime":
         raise HTTPException(409, "Brava Tile accounts already have Pro Lifetime access")
     key = stripe_key()
     price = stripe_price(body.plan)
@@ -540,15 +576,16 @@ async def billing_webhook(request: Request):
         raise HTTPException(400, "Invalid webhook")
     db = require_db()
     obj = event["data"]["object"]
-    if event["type"] == "checkout.session.completed":
+    if event["type"] in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
         email = (obj.get("metadata") or {}).get("email") or obj.get("client_reference_id")
-        plan = (obj.get("metadata") or {}).get("plan", "pro")
-        if email:
+        plan = (obj.get("metadata") or {}).get("plan")
+        paid_subscription = obj.get("mode") == "subscription" and obj.get("payment_status") == "paid" and obj.get("subscription") and obj.get("customer")
+        if paid_subscription and plan in {"starter", "pro"} and isinstance(email, str) and email:
             db.users.update_one({"email": email.lower()}, {"$set": {"plan": plan, "stripe_customer_id": obj.get("customer"), "stripe_subscription_id": obj.get("subscription")}})
     elif event["type"] in {"customer.subscription.deleted", "customer.subscription.paused"}:
         sub_id = obj.get("id")
         u = db.users.find_one({"stripe_subscription_id": sub_id})
-        if u and not is_brava(u.get("email", "")):
+        if u and entitlement_for(u)["plan"] != "pro_lifetime":
             db.users.update_one({"_id": u["_id"]}, {"$set": {"plan": "free"}})
     return {"received": True}
 
@@ -556,8 +593,11 @@ async def billing_webhook(request: Request):
 @app.get("/api/admin/status")
 def admin_status(user=Depends(current_user)):
     admin_email = os.getenv("ADMIN_EMAIL", "").lower()
-    if admin_email and user.lower() != admin_email:
-        raise HTTPException(403, "Admin only")
+    if not admin_email:
+        raise HTTPException(503, "Administration is not configured")
+    account = user_doc(user)
+    if user.lower() != admin_email or account.get("email_verified") is not True:
+        raise HTTPException(403, "Verified admin only")
     return {
         "database_configured": bool(MONGO_URL),
         "ai_configured": bool(OPENAI_API_KEY),
