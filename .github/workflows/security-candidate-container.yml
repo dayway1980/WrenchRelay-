@@ -30,7 +30,9 @@ jobs:
         run: |
           docker run --rm --network none \
             -e MONGO_URL= -e MONGODB_URI= \
-            -e RAILWAY_PUBLIC_DOMAIN= \
+            -e FRONTEND_URL=https://custom.example.invalid \
+            -e CORS_ORIGINS=https://custom.example.invalid \
+            -e RAILWAY_PUBLIC_DOMAIN=generated.example.invalid \
             -e JWT_SECRET= \
             -e STRIPE_SECRET_KEY= \
             -e STRIPE_WEBHOOK_SECRET= \
@@ -41,6 +43,10 @@ jobs:
           spec = importlib.util.find_spec("production")
           assert spec and Path(spec.origin) == Path("/app/backend/production.py"), "wrong entrypoint"
           import production
+          import server
+          assert server.FRONTEND_URL == "https://custom.example.invalid"
+          assert server.LEGAL_ENTITY_NAME == "WrenchRelay LLC"
+          assert "https://custom.example.invalid" in server.origins
           assert Path("/app/frontend/build/index.html").is_file(), "missing frontend build"
           assert list(Path("/app/frontend/build/static").rglob("*.js")), "missing JS assets"
           with TestClient(production.app) as client:
