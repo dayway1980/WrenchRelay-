@@ -3,14 +3,17 @@ name: Android Play internal signing candidate (manual, no publish)
 on:
   pull_request:
     paths:
-      - 'android-shell/app/build.gradle.kts'
-      - 'android-shell/verify_play_release.py'
+      - 'android-shell/**'
       - '.github/workflows/android-play-internal-candidate.yml'
   workflow_dispatch:
     inputs:
+      android_source_commit:
+        type: string
+        description: 'Full reviewed Android source commit SHA from this repository'
+        required: true
       play_package:
         type: choice
-        description: 'Copy exact package name from existing Play Console app'
+        description: 'Copy exact package name from the existing Play Console app'
         required: true
         options:
           - com.wrenchrelay.industrial
@@ -21,7 +24,7 @@ on:
         required: true
       upload_certificate_sha256:
         type: string
-        description: 'SHA-256 fingerprint of upload certificate in Play Console'
+        description: 'SHA-256 fingerprint of the upload certificate in Play Console'
         required: true
       play_console_confirmation:
         type: string
@@ -31,112 +34,137 @@ on:
 permissions:
   contents: read
 
+env:
+  PLAY_PACKAGE: ${{ inputs.play_package }}
+  PLAY_VERSION_CODE: ${{ inputs.version_code }}
+  PLAY_EXPECTED_CERT_SHA256: ${{ inputs.upload_certificate_sha256 }}
+  PLAY_OPERATOR_ACK: ${{ inputs.play_console_confirmation }}
+  ANDROID_SOURCE_COMMIT: ${{ inputs.android_source_commit }}
+  WORKFLOW_COMMIT: ${{ github.sha }}
+
 jobs:
   verify-guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Exercise fail-closed release input checks
-        run: python3 android-shell/verify_play_release.py --self-test
-
-  sign-internal-only:
-    if: github.event_name == 'workflow_dispatch'
-    needs: verify-guard
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    environment: play-internal-signing
-    env:
-      PLAY_PACKAGE: ${{ inputs.play_package }}
-      PLAY_VERSION_CODE: ${{ inputs.version_code }}
-      PLAY_EXPECTED_CERT_SHA256: ${{ inputs.upload_certificate_sha256 }}
-      PLAY_OPERATOR_ACK: ${{ inputs.play_console_confirmation }}
-      PLAY_UPLOAD_KEYSTORE_B64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_B64 }}
-      PLAY_STORE_PASSWORD: ${{ secrets.PLAY_STORE_PASSWORD }}
-      PLAY_KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
-      PLAY_KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate user-supplied Play release identity
-        run: |
-          python3 android-shell/verify_play_release.py \
-            --package "$PLAY_PACKAGE" \
-            --version-code "$PLAY_VERSION_CODE" \
-            --fingerprint "$PLAY_EXPECTED_CERT_SHA256" \
-            --confirmation "$PLAY_OPERATOR_ACK"
-      - name: Require owner-controlled release credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          for name in PLAY_UPLOAD_KEYSTORE_B64 PLAY_STORE_PASSWORD PLAY_KEY_PASSWORD PLAY_KEY_ALIAS; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Required protected signing secret is not configured: $name"
-              exit 2
-            fi
-          done
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Exercise release input, compiled identity, signature and cleanup checks
+        run: |
+          python3 android-shell/verify_play_release.py --self-test
+          python3 -m unittest discover -s android-shell -p 'test_play_signing.py' -v
+
+  build_unsigned:
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: verify-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      artifact_id: ${{ steps.unsigned_bundle.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate owner inputs before selecting source
+        run: |
+          python3 android-shell/verify_play_release.py \
+            --package "$PLAY_PACKAGE" --version-code "$PLAY_VERSION_CODE" \
+            --fingerprint "$PLAY_EXPECTED_CERT_SHA256" --confirmation "$PLAY_OPERATOR_ACK" \
+            --source-commit "$ANDROID_SOURCE_COMMIT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.android_source_commit }}
+          path: android-source
+          persist-credentials: false
+      - name: Confirm the selected source is exactly the reviewed commit
+        run: test "$(git -C android-source rev-parse HEAD)" = "$ANDROID_SOURCE_COMMIT"
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           gradle-version: '8.11.1'
-      - name: Build tested, unsigned AAB for Play-verified package and version
-        working-directory: android-shell
+      - name: Build and test selected source without upload-key secrets
+        working-directory: android-source/android-shell
         shell: bash
         run: |
           set -euo pipefail
           gradle --no-daemon \
             -PplayApplicationId="$PLAY_PACKAGE" -PplayVersionCode="$PLAY_VERSION_CODE" \
             :app:lintRelease :app:testDebugUnitTest :app:bundleRelease
-      - name: Verify owner upload certificate and sign ONLY the internal-test AAB
+      - name: Save unsigned bundle for the isolated signing runner
+        id: unsigned_bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: WrenchRelay-Play-Internal-UNSIGNED
+          path: android-source/android-shell/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 1
+
+  sign-internal-only:
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: build_unsigned
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: play-internal-signing
+    steps:
+      # Only trusted workflow helpers run here. Selected app/Gradle code is never executed.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.build_unsigned.outputs.artifact_id }}
+          path: ${{ runner.temp }}/unsigned-candidate
+          merge-multiple: true
+      - name: Validate compiled AAB and bind release identity to its exact bytes
         shell: bash
         run: |
           set -euo pipefail
-          umask 077
-          KEYSTORE="$RUNNER_TEMP/wrenchrelay-upload-keystore"
-          printf '%s' "$PLAY_UPLOAD_KEYSTORE_B64" | base64 --decode > "$KEYSTORE"
-          chmod 600 "$KEYSTORE"
-
-          ACTUAL_FINGERPRINT="$(keytool -list -v -keystore "$KEYSTORE" \
-            -alias "$PLAY_KEY_ALIAS" -storepass:env PLAY_STORE_PASSWORD \
-            | awk '/SHA256:/{print $2;exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          EXPECTED_FINGERPRINT="$(printf '%s' "$PLAY_EXPECTED_CERT_SHA256" \
-            | tr -d ': ' | tr '[:upper:]' '[:lower:]')"
-
-          if [[ -z "$ACTUAL_FINGERPRINT" || "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]]; then
-            echo "::error::Keystore certificate does not match verified Play Console upload certificate"
-            exit 2
-          fi
-
-          INPUT_AAB="android-shell/app/build/outputs/bundle/release/app-release.aab"
-          OUTPUT_AAB="$RUNNER_TEMP/wrenchrelay-industrial-internal-SIGNED.aab"
-          test -s "$INPUT_AAB"
-          jarsigner -keystore "$KEYSTORE" \
-            -storepass:env PLAY_STORE_PASSWORD -keypass:env PLAY_KEY_PASSWORD \
-            -signedjar "$OUTPUT_AAB" "$INPUT_AAB" "$PLAY_KEY_ALIAS"
-          jarsigner -verify "$OUTPUT_AAB" > "$RUNNER_TEMP/signature-status.txt"
-          grep -q 'jar verified' "$RUNNER_TEMP/signature-status.txt"
-
-          SIGNED_FINGERPRINT="$(keytool -printcert -jarfile "$OUTPUT_AAB" \
-            | awk '/SHA256:/{print $2;exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          if [[ "$SIGNED_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]]; then
-            echo "::error::Signed bundle certificate fingerprint mismatch"
-            exit 2
-          fi
-
-          mkdir -p android-shell/play-internal-output
-          cp "$OUTPUT_AAB" android-shell/play-internal-output/wrenchrelay-industrial-internal-SIGNED.aab
-          sha256sum android-shell/play-internal-output/wrenchrelay-industrial-internal-SIGNED.aab \
-            > android-shell/play-internal-output/SHA256SUMS.txt
-          printf 'package=%s\nversionCode=%s\nsourceCommit=%s\ntrack=NOT_UPLOADED\n' \
-            "$PLAY_PACKAGE" "$PLAY_VERSION_CODE" "$GITHUB_SHA" \
-            > android-shell/play-internal-output/RELEASE_IDENTITY.txt
-          rm -f "$KEYSTORE"
-      - name: Save signed candidate (never publish automatically)
-        uses: actions/upload-artifact@v4
+          BUNDLETOOL="$RUNNER_TEMP/bundletool-all-1.18.3.jar"
+          curl --fail --location --silent --show-error --retry 3 \
+            --connect-timeout 15 --max-time 120 \
+            'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar' \
+            --output "$BUNDLETOOL"
+          python3 android-shell/verify_play_release.py \
+            --package "$PLAY_PACKAGE" --version-code "$PLAY_VERSION_CODE" \
+            --fingerprint "$PLAY_EXPECTED_CERT_SHA256" --confirmation "$PLAY_OPERATOR_ACK" \
+            --source-commit "$ANDROID_SOURCE_COMMIT" --workflow-commit "$WORKFLOW_COMMIT" \
+            --bundle "$RUNNER_TEMP/unsigned-candidate/app-release.aab" --bundletool "$BUNDLETOOL" \
+            --identity-output "$RUNNER_TEMP/RELEASE_IDENTITY.json"
+      - name: Use owner key only after compiled identity validation
+        shell: bash
+        env:
+          PLAY_UPLOAD_KEYSTORE_B64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_STORE_PASSWORD: ${{ secrets.PLAY_STORE_PASSWORD }}
+          PLAY_KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
+          PLAY_KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
+          INPUT_AAB: ${{ runner.temp }}/unsigned-candidate/app-release.aab
+          PLAY_IDENTITY_FILE: ${{ runner.temp }}/RELEASE_IDENTITY.json
+          OUTPUT_DIRECTORY: ${{ runner.temp }}/signed-candidate
+        run: bash android-shell/sign_internal_bundle.sh
+      - name: Save signed candidate for owner review (never publish)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: WrenchRelay-Play-Internal-SIGNED-OWNER-KEY
-          path: android-shell/play-internal-output/
+          path: ${{ runner.temp }}/signed-candidate/
           if-no-files-found: error
           retention-days: 7
+      - name: Remove signing intermediates on success, failure or cancellation
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP"/wrenchrelay-signing.* \
+            "$RUNNER_TEMP/unsigned-candidate" "$RUNNER_TEMP/signed-candidate"
+          rm -f -- "$RUNNER_TEMP/RELEASE_IDENTITY.json" "$RUNNER_TEMP/bundletool-all-1.18.3.jar"
+
