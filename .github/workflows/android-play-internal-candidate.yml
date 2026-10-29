@@ -89,6 +89,27 @@ jobs:
           gradle --no-daemon \
             -PplayApplicationId="$PLAY_PACKAGE" -PplayVersionCode="$PLAY_VERSION_CODE" \
             :app:lintRelease :app:testDebugUnitTest :app:bundleRelease
+      - name: Verify compiled App Bundle identity using pinned Google bundletool
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLETOOL="$RUNNER_TEMP/bundletool-all-1.18.3.jar"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar" \
+            --output "$BUNDLETOOL"
+          printf '%s  %s\n' \
+            'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29' \
+            "$BUNDLETOOL" | sha256sum --check
+          INPUT_AAB="android-shell/app/build/outputs/bundle/release/app-release.aab"
+          COMPILED_PACKAGE="$(java -jar "$BUNDLETOOL" dump manifest --bundle="$INPUT_AAB" \
+            --xpath=/manifest/@package | tr -d '\r\n ')"
+          COMPILED_VERSION="$(java -jar "$BUNDLETOOL" dump manifest --bundle="$INPUT_AAB" \
+            --xpath=/manifest/@android:versionCode | tr -d '\r\n ')"
+          if [[ "$COMPILED_PACKAGE" != "$PLAY_PACKAGE" || "$COMPILED_VERSION" != "$PLAY_VERSION_CODE" ]]; then
+            echo "::error::Compiled App Bundle package/version differs from verified Play Console release identity"
+            exit 2
+          fi
+          echo "PASS: compiled AAB package and version match the validated Play Console inputs"
       - name: Verify owner upload certificate and sign ONLY the internal-test AAB
         shell: bash
         run: |
