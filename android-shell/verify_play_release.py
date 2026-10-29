@@ -25,7 +25,7 @@ def normalized_digest(value: str) -> str:
 def validate(package: str, version_code: str, fingerprint: str, confirmation: str) -> str:
     if package not in ALLOWED_PACKAGES:
         raise ValueError("Package is not a documented WrenchRelay Industrial candidate")
-    if not re.fullmatch(r"[1-9][0-9]{0,8}", version_code):
+    if not re.fullmatch(r"[1-9][0-9]{0,9}", version_code):
         raise ValueError("Version code must be a positive decimal integer")
     if not 1 <= int(version_code) <= 2100000000:
         raise ValueError("Version code outside Google Play supported range")
@@ -38,11 +38,13 @@ def self_test() -> None:
     good = "AA:" * 31 + "AA"
     assert validate("com.wrenchrelay.industrial", "1", good, ACK) == "aa" * 32
     assert validate("com.wrenchrelayllc.industrial", "123", "f" * 64, ACK) == "f" * 64
+    assert validate("com.wrenchrelay.industrial", "2100000000", "b" * 64, ACK) == "b" * 64
     bad = [
         ("com.wrenchrelay.industrial.evil", "1", good, ACK),
         ("com.wrenchrelay.industrial", "0", good, ACK),
         ("com.wrenchrelay.industrial", "-1", good, ACK),
         ("com.wrenchrelay.industrial", "2100000001", good, ACK),
+        ("com.wrenchrelay.industrial", "0001", good, ACK),
         ("com.wrenchrelay.industrial", "1", "1234", ACK),
         ("com.wrenchrelay.industrial", "1", good, "not-confirmed"),
     ]
