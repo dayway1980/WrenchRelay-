@@ -1,0 +1,142 @@
+name: Android Play internal signing candidate (manual, no publish)
+
+on:
+  pull_request:
+    paths:
+      - 'android-shell/app/build.gradle.kts'
+      - 'android-shell/verify_play_release.py'
+      - '.github/workflows/android-play-internal-candidate.yml'
+  workflow_dispatch:
+    inputs:
+      play_package:
+        type: choice
+        description: 'Copy exact package name from existing Play Console app'
+        required: true
+        options:
+          - com.wrenchrelay.industrial
+          - com.wrenchrelayllc.industrial
+      version_code:
+        type: string
+        description: 'Positive unused versionCode verified in Play Console'
+        required: true
+      upload_certificate_sha256:
+        type: string
+        description: 'SHA-256 fingerprint of upload certificate in Play Console'
+        required: true
+      play_console_confirmation:
+        type: string
+        description: 'Type I_VERIFIED_PLAY_PACKAGE_VERSION_AND_UPLOAD_CERT'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise fail-closed release input checks
+        run: python3 android-shell/verify_play_release.py --self-test
+
+  sign-internal-only:
+    if: github.event_name == 'workflow_dispatch'
+    needs: verify-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: play-internal-signing
+    env:
+      PLAY_PACKAGE: ${{ inputs.play_package }}
+      PLAY_VERSION_CODE: ${{ inputs.version_code }}
+      PLAY_EXPECTED_CERT_SHA256: ${{ inputs.upload_certificate_sha256 }}
+      PLAY_OPERATOR_ACK: ${{ inputs.play_console_confirmation }}
+      PLAY_UPLOAD_KEYSTORE_B64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_B64 }}
+      PLAY_STORE_PASSWORD: ${{ secrets.PLAY_STORE_PASSWORD }}
+      PLAY_KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
+      PLAY_KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate user-supplied Play release identity
+        run: |
+          python3 android-shell/verify_play_release.py \
+            --package "$PLAY_PACKAGE" \
+            --version-code "$PLAY_VERSION_CODE" \
+            --fingerprint "$PLAY_EXPECTED_CERT_SHA256" \
+            --confirmation "$PLAY_OPERATOR_ACK"
+      - name: Require owner-controlled release credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in PLAY_UPLOAD_KEYSTORE_B64 PLAY_STORE_PASSWORD PLAY_KEY_PASSWORD PLAY_KEY_ALIAS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required protected signing secret is not configured: $name"
+              exit 2
+            fi
+          done
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build tested, unsigned AAB for Play-verified package and version
+        working-directory: android-shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon \
+            -PplayApplicationId="$PLAY_PACKAGE" -PplayVersionCode="$PLAY_VERSION_CODE" \
+            :app:lintRelease :app:testDebugUnitTest :app:bundleRelease
+      - name: Verify owner upload certificate and sign ONLY the internal-test AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYSTORE="$RUNNER_TEMP/wrenchrelay-upload-keystore"
+          printf '%s' "$PLAY_UPLOAD_KEYSTORE_B64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+
+          ACTUAL_FINGERPRINT="$(keytool -list -v -keystore "$KEYSTORE" \
+            -alias "$PLAY_KEY_ALIAS" -storepass:env PLAY_STORE_PASSWORD \
+            | awk '/SHA256:/{print $2;exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          EXPECTED_FINGERPRINT="$(printf '%s' "$PLAY_EXPECTED_CERT_SHA256" \
+            | tr -d ': ' | tr '[:upper:]' '[:lower:]')"
+
+          if [[ -z "$ACTUAL_FINGERPRINT" || "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]]; then
+            echo "::error::Keystore certificate does not match verified Play Console upload certificate"
+            exit 2
+          fi
+
+          INPUT_AAB="android-shell/app/build/outputs/bundle/release/app-release.aab"
+          OUTPUT_AAB="$RUNNER_TEMP/wrenchrelay-industrial-internal-SIGNED.aab"
+          test -s "$INPUT_AAB"
+          jarsigner -keystore "$KEYSTORE" \
+            -storepass:env PLAY_STORE_PASSWORD -keypass:env PLAY_KEY_PASSWORD \
+            -signedjar "$OUTPUT_AAB" "$INPUT_AAB" "$PLAY_KEY_ALIAS"
+          jarsigner -verify "$OUTPUT_AAB" > "$RUNNER_TEMP/signature-status.txt"
+          grep -q 'jar verified' "$RUNNER_TEMP/signature-status.txt"
+
+          SIGNED_FINGERPRINT="$(keytool -printcert -jarfile "$OUTPUT_AAB" \
+            | awk '/SHA256:/{print $2;exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          if [[ "$SIGNED_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]]; then
+            echo "::error::Signed bundle certificate fingerprint mismatch"
+            exit 2
+          fi
+
+          mkdir -p android-shell/play-internal-output
+          cp "$OUTPUT_AAB" android-shell/play-internal-output/wrenchrelay-industrial-internal-SIGNED.aab
+          sha256sum android-shell/play-internal-output/wrenchrelay-industrial-internal-SIGNED.aab \
+            > android-shell/play-internal-output/SHA256SUMS.txt
+          printf 'package=%s\nversionCode=%s\nsourceCommit=%s\ntrack=NOT_UPLOADED\n' \
+            "$PLAY_PACKAGE" "$PLAY_VERSION_CODE" "$GITHUB_SHA" \
+            > android-shell/play-internal-output/RELEASE_IDENTITY.txt
+          rm -f "$KEYSTORE"
+      - name: Save signed candidate (never publish automatically)
+        uses: actions/upload-artifact@v4
+        with:
+          name: WrenchRelay-Play-Internal-SIGNED-OWNER-KEY
+          path: android-shell/play-internal-output/
+          if-no-files-found: error
+          retention-days: 7
