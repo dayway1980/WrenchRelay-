@@ -2,6 +2,15 @@
 
 A release is not complete merely because `/api/health` is green. Every release must pass the product tests below.
 
+## Scope and runtime selection
+
+These original checks describe the repository's MongoDB candidate. The live
+October 31 canonical backend is SQLite `3.1.0-canonical-i18n` and uses
+`/api/health`. Do not require MongoDB or deploy the candidate to make a live
+SQLite check pass. Use `COMMISSIONING_CONTROL_2026-10-31.md` for the current
+release gates, canonical domain `www.wrenchrelayllc.com`, and unverified items.
+The historical domain list below is not an instruction to change DNS.
+
 ## A. Build and infrastructure
 
 - Docker build completes from repository root.
@@ -9,7 +18,7 @@ A release is not complete merely because `/api/health` is green. Every release m
 - `/api/health` returns HTTP 200.
 - MongoDB is reachable.
 - No secrets appear in build logs or source.
-- Railway health check is `/api/health`, sleeping disabled, restart policy ON_FAILURE.
+- Repository candidate Railway health check is `/api/health/ready`, sleeping disabled, restart policy ON_FAILURE; validate its configured health contract independently from live SQLite.
 
 ## B. Public routing
 
