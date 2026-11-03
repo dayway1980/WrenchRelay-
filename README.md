@@ -15,6 +15,21 @@ WrenchRelay is a voice-first maintenance documentation and troubleshooting assis
 
 ## Production architecture
 
+### Live-runtime warning (verified October 31, 2026)
+
+The current `www.wrenchrelayllc.com` production backend is the canonical
+`3.1.0-canonical-i18n` **SQLite** application, bootstrapped from a hash-checked
+archive on Railway with a persistent volume at `/app/wr/data`. It is not the
+MongoDB application described below. Do not redeploy this repository's root
+Dockerfile over that service until source parity, persistence compatibility,
+backup restoration and rollback have been verified.
+
+The live service uses `/api/health`. The repository candidate below configures
+`/api/health/ready`; these are separate contracts, not interchangeable deployment
+instructions. See [current commissioning gates](COMMISSIONING_CONTROL_2026-10-31.md).
+
+### Repository candidate architecture
+
 Railway runs the root Dockerfile. The container starts:
 
 ```bash
@@ -61,7 +76,7 @@ See `.env.example`. Never commit secrets. The important production variables are
 
 The persistence layer is selected entirely by `MONGO_URL`/`MONGODB_URI`; no
 application code or customer-facing DNS change is required to move between
-compatible managed MongoDB providers. Production must use a non-pausing,
+compatible managed MongoDB providers. This candidate must use a non-pausing,
 replicated cluster with automated backups. Validate a replacement with
 `scripts/verify_database.py` before changing production configuration.
 
