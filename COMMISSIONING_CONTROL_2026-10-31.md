@@ -13,6 +13,23 @@ Status: NOT fully commissioned. This record supersedes assumptions, not historic
 - Earlier verified deployment f0fbc7c6-a3bd-4e08-8aa8-c5bbafdaaaea has a webhook secret with the expected prefix. An unsigned request returned 400. Signed delivery remains unverified.
 - Legacy Android builder deployment 2ed80666-3290-432b-b0a0-471cfe1fac0c failed: `/tmp/build.sh: line 347: gradle: command not found`. Startup also generated a keystore. No Play upload or certificate acceptance is proven.
 
+## Read-only recheck — November 3, 2026
+
+This section records read-only connected-account evidence gathered after PR #27 was published. Earlier October 31 checks above retain their original timestamp and scope.
+
+- **GitHub:** PR #27 remains open, mergeable, and draft; not merged. Commit history in the remote branch is real, so the former "no remote push" statement at the end of this file has been corrected.
+- **Railway:** The production SQLite backend and app gateway are online. The backend has one running replica and a persistent volume mounted at `/app/wr/data`. There are no staged production changes. The MongoDB service is sleeping; do not treat it as authoritative production data.
+- **Stripe live-mode account:** One enabled webhook endpoint points to `https://wrenchrelay-app-production.up.railway.app/api/billing/webhook` and subscribes to checkout completion, invoice payment/failure and subscription lifecycle events. Active Stripe products exist. Endpoint enablement and product setup are *configuration evidence only*.
+- **Gateway route:** The deployed gateway config rewrites `/api/billing/webhook` to `/api/stripe/webhook` before proxying to the backend/recovery targets. This needs an observed end-to-end Stripe delivery before marking the route PASS.
+- **Gateway HTTP telemetry:** In the last 72 hours of the inspection, the endpoint registered three HTTP requests: two 5xx and one 4xx, with **zero recorded 2xx**. Historical gateway logs also include webhook POST responses of HTTP 503. The October 31 unsigned POST returned 400, which does not prove successful signature verification or fulfillment.
+- **Stripe event history:** A read-only query of the available recent event history (up to 30 days) found no `checkout.session.completed`, `invoice.paid`, `customer.subscription.created`, `customer.subscription.updated`, or `invoice.payment_failed` events. This does not rule out older activity and does not prove that a particular endpoint can process valid events.
+- **Runtime credential diagnostic:** The latest deploy startup logged that Stripe SDK, named credential variables, and webhook secret were present, with a `whsec_`-shaped webhook secret. Its `live_key_format` flag was false despite a populated live credential variable; this is an unresolved validation discrepancy, **not proof** that the credential is invalid. Do not print, copy into source control, or rotate credentials casually.
+- **Privilege hygiene:** The failed legacy Android builder still lists Stripe secret-variable names. Review whether that builder needs them at all; remove only after checking dependencies and credentials separately. Do not transfer signing or payment secrets into build logs or artifacts.
+
+**P0 release decision:** BILLING **UNVERIFIED**, not commissioned. No live charges, subscription mutations, or entitlement grants were made in this review. Do not switch on customer-facing paid access or deploy the MongoDB candidate on the strength of public GET checks.
+
+**Next controlled acceptance test:** In an authorized Stripe sandbox, deliver a real Stripe-signed event to an isolated webhook implementation matching the canonical SQLite source; record delivery ID, timestamp, 2xx response, verified signature, durable idempotency record, correct account/price binding, and access changes. Replay the same event and prove no duplicate grant. Also test bad/stale/wrong-endpoint signatures and denied cross-tenant access. Before any live activation, reconcile the deployed source archive hash, confirm the deployed key belongs to the intended Stripe account, and perform an isolated SQLite backup restore.
+
 ## Ordered release gates
 
 | Priority | Concrete work | Acceptance evidence | Customer outcome |
@@ -49,4 +66,4 @@ Authenticated Stripe test-send or authorized sandbox; canonical deployed-source 
 
 At 2026-10-31 20:31:55 UTC (3:31:55 PM CDT), all eight checks passed: JSON SQLite health, unauthenticated work-order denial, nonexistent API route denial, home, Industrial, Automotive, privacy and terms. No authenticated workflow was exercised. Automatic review rejected including `/delete-account` because its no-mutation contract had not been verified; that route was removed from the reusable checker rather than bypassing review. No deletion was attempted in the revised run.
 
-Changes are isolated on local branch `audit/commissioning-20261031`. No remote push, deployment, signing, service shutdown, database migration or billing activation has been performed in this pass.
+The checks and documentation were pushed to remote draft PR #27 on branch `audit/commissioning-20261031`; they have not been merged into `main`. No production deployment, signing, service shutdown, database migration or billing activation was performed by these PR changes.
