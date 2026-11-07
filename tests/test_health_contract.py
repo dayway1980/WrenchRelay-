@@ -31,3 +31,13 @@ def test_vercel_api_has_liveness_and_readiness_routes():
     assert '@app.get("/api/health/live")' in source
     assert '@app.get("/api/health/ready")' in source
     assert 'status_code=503' in source
+
+def test_wrenchrelay_identity_defaults_are_separate():
+    paths = ("server.py", "api-service/main.py", ".env.example")
+    sources = {path: Path(path).read_text(encoding="utf-8") for path in paths}
+
+    assert "WrenchRelay LLC" in sources["server.py"]
+    assert "WrenchRelay LLC" in sources["api-service/main.py"]
+    assert "LEGAL_ENTITY_NAME=WrenchRelay LLC" in sources[".env.example"]
+    assert all("God's Plan LLC" not in source for source in sources.values())
+
