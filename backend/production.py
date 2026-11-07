@@ -7,11 +7,13 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+# Respect explicitly configured canonical public origins. Railway's temporary
+# domain must not overwrite customer-facing Checkout return URLs or CORS policy.
 railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 if railway_domain:
     public_url = f"https://{railway_domain}"
-    os.environ["CORS_ORIGINS"] = public_url
-    os.environ["FRONTEND_URL"] = public_url
+    os.environ.setdefault("CORS_ORIGINS", public_url)
+    os.environ.setdefault("FRONTEND_URL", public_url)
 
 from server import app
 
