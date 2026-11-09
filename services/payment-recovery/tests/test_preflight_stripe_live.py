@@ -71,6 +71,25 @@ class LivePreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(BillingError, "invalid_configuration"):
             run(ACCOUNT, "../price", 9900, api_factory=FakeAPI)
 
+    def test_actual_transport_rejects_mismatched_account(self):
+        # Exercise StripeAPI's real account-binding guard without network or keys.
+        from unittest.mock import patch as mock_patch
+        with mock_patch("recovery.StripeAPI._request", return_value={
+            "id": "acct_AnotherUnrelatedAccount",
+            "charges_enabled": True,
+        }):
+            with self.assertRaisesRegex(BillingError, "stripe_account_not_ready"):
+                run(ACCOUNT, PRICE, 9900)
+
+    def test_actual_transport_rejects_account_without_charge_capability(self):
+        from unittest.mock import patch as mock_patch
+        with mock_patch("recovery.StripeAPI._request", return_value={
+            "id": ACCOUNT,
+            "charges_enabled": False,
+        }):
+            with self.assertRaisesRegex(BillingError, "stripe_account_not_ready"):
+                run(ACCOUNT, PRICE, 9900)
+
     def test_unverified_webhook_stays_unverified(self):
         with patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": ""}):
             result = run(ACCOUNT, PRICE, 9900, api_factory=FakeAPI)
