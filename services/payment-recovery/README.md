@@ -52,3 +52,19 @@ The worker retries indefinitely for transient errors, with capped delay. Invalid
 Completed/foreign inbox items are retained for 90 days and then removed. Retrying an older event is still safe because it fetches current subscription state rather than applying a financial mutation. Intent records and existing Stripe-event audit records need a reviewed retention policy; do not purge them blindly. Back up the same durable database volume and measure SQLite lock contention before expanding concurrency.
 
 Payment health only establishes configured API reachability and queue processing, not a guarantee of future successful charges or business revenue. Live acceptance and recovery are not yet established. No production change, customer charge, new subscription, webhook replacement or credential rotation was performed while preparing this branch.
+
+## Canonical-source/SQLite preflight (added November 9, 2026)
+
+Use preflight_live.py against the **reconstructed, actually running canonical SQLite host**, not this repository's MongoDB candidate or a historical fixture. It does not import the host or read Stripe secrets.
+
+From the payment-recovery directory, supply verified absolute paths:
+
+    python preflight_live.py --host-root /absolute/path/to/reconstructed/canonical/runtime --database /absolute/path/to/existing/app.sqlite
+
+The read-only invocation checks source structure, prints the backend/app.py SHA-256, checks expected SQLite table names, and runs SQLite quick_check. A source structure pass is not proof of live source parity, and a fail-closed mismatch requires a human review.
+
+Only with explicit authorization for handling customer data and a separate private backup directory (0700), pass --backup-dir /absolute/path/to/private/directory. The snapshot uses SQLite's online backup API, mode-0600 files, and a separate integrity check. Keep snapshots out of source control and logs, enforce encrypted off-host retention, and prove an independently restored copy before any migration. Integrity checking a snapshot is **not** a full restore test.
+
+The five local preflight tests cover missing tables, unsafe backup permissions, source-shape denial, read-only preflight, and snapshot integrity. They do not prove Stripe signatures, login, tenant isolation, payments or entitlements.
+
+**Release gate remains CLOSED** until source parity, an independent backup restore, a real Stripe-signed sandbox webhook, correct Stripe account/price binding, protected feature enforcement, and a reversible rollout are verified. Do not enable billing based on the preflight alone.
