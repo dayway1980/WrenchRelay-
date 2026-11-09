@@ -16,7 +16,7 @@ Status: READ-ONLY EVIDENCE. Release gate remains CLOSED. No production deploymen
 - Archive SHA-256 printed by that deployment on 2026-11-05T16:15:24Z: `74f5e3c7f7d242dcb2f45ba3d9c62d95243357b2e05adbfeb0bf2defc7199ed1`.
 - No currently staged production changes.
 - Recent /api/health request logs return 200. These prove availability, not authenticated workflows, billing fulfillment, or database safety.
-- OAuth Railway tools expose variable **names** but withhold variable **values**. `WR_SRC_00`–`WR_SRC_07`, `WR_CANONICAL_TGZ_SHA256`, and `WR_DB_PATH` variable names are present, though only the first nine of these names were inspected individually. The SQLite database's exact file path is not established from these metadata.
+- OAuth Railway tools expose variable **names** but withhold variable **values**. `WR_SRC_00`–`WR_SRC_07`, `WR_CANONICAL_TGZ_SHA256`, and `WR_DB_PATH` variable names are present, but the SQLite database's exact file path is not established from these metadata.
 - Startup billing diagnostic reports named Stripe key and webhook variables present, `webhook_secret_format=true`, but `live_key_format=false` (unresolved; does not by itself prove the key is invalid). Do not print or rotate hidden credentials merely because this flag differs.
 
 ## Owner-side, read-only check (does not reveal any variables)
