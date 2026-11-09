@@ -1,5 +1,6 @@
 import json
 import os
+from contextlib import asynccontextmanager
 import tempfile
 import time
 import unittest
@@ -7,7 +8,7 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 
 import integration
@@ -91,6 +92,55 @@ class IntegrationTests(unittest.TestCase):
                 self.assertEqual(c.get('/unrelated').status_code,200)
                 self.assertEqual(c.get('/api/billing/health').status_code,503)
                 self.assertEqual(c.post('/api/checkout',json={},headers={'Authorization':'Bearer fixture-session'}).status_code,503)
+
+
+    def test_existing_host_lifespan_preserved_with_adapter_disabled(self):
+        events = []
+
+        @asynccontextmanager
+        async def original_lifespan(app):
+            events.append('host_started')
+            yield {'original_lifespan_marker': 'present'}
+            events.append('host_stopped')
+
+        self.host.app.router.lifespan_context = original_lifespan
+
+        @self.host.app.get('/lifespan-state')
+        def lifespan_state(request: Request):
+            return {'marker': request.state.original_lifespan_marker}
+
+        with patch.dict(os.environ, {'WR_PAYMENTS_RECOVERY_ENABLED': 'false'}, clear=True):
+            integration.install(self.host)
+            with TestClient(self.host.app) as client:
+                self.assertEqual(events, ['host_started'])
+                self.assertEqual(client.get('/lifespan-state').json(), {'marker': 'present'})
+                self.assertEqual(client.get('/api/billing/health').status_code, 503)
+                self.assertEqual(client.post('/api/checkout').json(), {'legacy': True})
+            self.assertEqual(events, ['host_started', 'host_stopped'])
+
+    def test_existing_host_lifespan_preserved_with_adapter_enabled(self):
+        events = []
+
+        @asynccontextmanager
+        async def original_lifespan(app):
+            events.append('host_started')
+            yield {'existing_state': 'kept'}
+            events.append('host_stopped')
+
+        self.host.app.router.lifespan_context = original_lifespan
+
+        @self.host.app.get('/existing-state')
+        def existing_state(request: Request):
+            return {'state': request.state.existing_state}
+
+        with patch.dict(os.environ, self.env, clear=True), patch.object(integration, 'StripeAPI', return_value=self.api):
+            integration.install(self.host)
+            with TestClient(self.host.app) as client:
+                self.assertEqual(events, ['host_started'])
+                self.assertEqual(client.get('/existing-state').json(), {'state': 'kept'})
+                self.assertEqual(client.get('/unrelated').status_code, 200)
+                self.assertEqual(client.post('/api/checkout', json={}, headers={'Authorization': 'Bearer fixture-session'}).status_code, 200)
+            self.assertEqual(events, ['host_started', 'host_stopped'])
 
 
 if __name__=='__main__':unittest.main()
