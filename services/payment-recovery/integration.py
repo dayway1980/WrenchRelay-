@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 import os
 import threading
 from pathlib import Path
@@ -98,8 +99,22 @@ def install(host: ModuleType) -> None:
         if thread:
             thread.join(timeout=2)
 
-    app.add_event_handler("startup", startup)
-    app.add_event_handler("shutdown", shutdown)
+    # Compose with the host's existing lifespan rather than registering legacy
+    # startup/shutdown handlers (removed in Starlette 1.x). The outer host
+    # context starts first and always receives its own shutdown, including
+    # when the billing adapter is disabled or unavailable.
+    host_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def payment_lifespan(application):
+        async with host_lifespan(application) as lifespan_state:
+            startup()
+            try:
+                yield lifespan_state
+            finally:
+                shutdown()
+
+    app.router.lifespan_context = payment_lifespan
 
     def service() -> Recovery:
         result = state["recovery"]
