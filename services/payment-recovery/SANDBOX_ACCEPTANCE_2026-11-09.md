@@ -5,7 +5,7 @@
 ## Evidence available now
 
 - Read-only Stripe sandbox inspection: account `acct_1TxJjZChyIdA3Bgu`, one active **$99/month** recurring test price `price_1UZYkxChyIdA3BgufdqmRzTl`, two historical successful simulated Checkout payments, and one trialing test subscription.
-- Both existing sandbox webhook endpoints are **disabled**. They target separate Vercel receiver URLs, not a reviewed `payment-recovery` staging instance. Do not blindly enable or redirect them.
+- As rechecked November 9, both existing sandbox webhook endpoints are **enabled**, but they target separate Vercel receiver URLs, not a reviewed `payment-recovery` staging instance. Enabled is not proof of a valid Stripe-signed payment-to-entitlement path. Do not blindly redirect them.
 - Existing live FastAPI SQLite application responds with `stripe_enabled=true`, while `/api/billing/health` is HTTP 404. This does **not** indicate the new recovery adapter is installed or that payments are commissioned.
 - Production `/tmp/wr-canonical.tgz` has the archive hash recorded in `PRODUCTION_SOURCE_EVIDENCE_2026-11-09.md`; post-patch `backend/app.py` and the restored DB remain unverified.
 - The synthetic suite runs across three FastAPI/Starlette versions and is not a live Stripe webhook test.

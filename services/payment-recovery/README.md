@@ -1,5 +1,9 @@
 # WrenchRelay payment recovery
 
+## Live account identity preflight (read-only)
+
+See [STRIPE_ACCOUNT_GATE_2026-11-09.md](STRIPE_ACCOUNT_GATE_2026-11-09.md) for the verified WrenchRelay production Stripe account and $99 Automotive Core monthly price. In the **trusted canonical backend environment only**, `preflight_stripe_live.py` verifies the live API key's actual account and exact active price through read-only Stripe GET requests. It never creates a payment, subscription, webhook, registration, or entitlement; passing does not establish real signed-event delivery. Keep the release gate closed until source parity, isolated database restoration, and genuine test-mode webhook-to-entitlement acceptance are independently proven.
+
 This is an opt-in repair for the existing SQLite application, not the separate GitHub MongoDB implementation. No production startup setting or customer database is changed by committing these files.
 
 ## Confirmed production diagnosis
