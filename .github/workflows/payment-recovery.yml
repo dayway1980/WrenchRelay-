@@ -40,6 +40,6 @@ jobs:
       - name: Check dependency compatibility
         run: python -m pip check
       - name: Compile Python integration and recovery code
-        run: python -m compileall -q recovery.py integration.py bootstrap.py preflight_live.py sandbox_preflight.py
+        run: python -m compileall -q recovery.py integration.py bootstrap.py preflight_live.py preflight_stripe_live.py sandbox_preflight.py
       - name: Verify real SQLite transactions and synthetic Stripe boundaries
         run: python -m unittest discover -s tests -v
