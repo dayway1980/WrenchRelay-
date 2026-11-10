@@ -17,7 +17,10 @@ class RailwayBridgeContract(unittest.TestCase):
                 "destination": "https://wrenchrelay-app-production.up.railway.app/api/health",
             },
         )
-        self.assertEqual(routes[1:],
+        self.assertEqual(routes[1],
+                         {"source": "/__bridge/railway-openapi",
+                          "destination": "https://wrenchrelay-app-production.up.railway.app/openapi.json"})
+        self.assertEqual(routes[2:],
                          [
                              {"source": "/api", "destination": {"service": "api"}},
                              {"source": "/api/(.*)", "destination": {"service": "api"}},
@@ -25,7 +28,7 @@ class RailwayBridgeContract(unittest.TestCase):
                          ])
         external = [r for r in routes if isinstance(r.get("destination"), str)
                     and r["destination"].startswith("https://")]
-        self.assertEqual(len(external), 1)
+        self.assertEqual(len(external), 2)
         self.assertNotIn("mongodb", str(obj).lower())
         self.assertNotIn("sk_live_", str(obj).lower())
 
