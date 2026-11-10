@@ -1,0 +1,32 @@
+name: Synthetic candidate auth and billing contract
+on:
+  pull_request:
+    paths:
+      - 'api-service/main.py'
+      - 'api-service/requirements.txt'
+      - 'tests/test_candidate_synthetic_flow.py'
+      - '.github/workflows/synthetic-candidate-flow.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'api-service/main.py'
+      - 'api-service/requirements.txt'
+      - 'tests/test_candidate_synthetic_flow.py'
+      - '.github/workflows/synthetic-candidate-flow.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-fastapi-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install candidate dependencies and in-memory MongoDB double
+        run: pip install --disable-pip-version-check -r api-service/requirements.txt mongomock==4.3.0
+      - name: Exercise isolated auth, cookies, tenant data and webhook signatures
+        run: python -m unittest discover -s tests -p 'test_candidate_synthetic_flow.py' -v
