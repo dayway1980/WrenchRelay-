@@ -53,7 +53,9 @@ def approved_redirect(value: str, configured_origins: list[str], *, origin_only:
         raise ValueError("A frontend origin is required")
     allowed = set()
     for configured in configured_origins:
-        if configured:
+        # CORS wildcard allows cross-origin reads, never redirects. Ignore it
+        # rather than rejecting an otherwise explicit approved frontend origin.
+        if configured and configured.strip() != "*":
             allowed.add(_origin(configured.strip(), configured=True))
     if not allowed or _origin(value) not in allowed:
         raise ValueError("Redirect origin is not approved")
