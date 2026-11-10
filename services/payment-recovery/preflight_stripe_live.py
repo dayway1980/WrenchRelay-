@@ -36,8 +36,11 @@ def run(expected_account: str, price_id: str, expected_amount_cents: int,
             or price.get("active") is not True
             or price.get("currency") != "usd"
             or price.get("unit_amount") != expected_amount_cents
+            or price.get("type") != "recurring"
             or not isinstance(recurring, dict)
-            or recurring.get("interval") != "month"):
+            or recurring.get("interval") != "month"
+            or type(recurring.get("interval_count")) is not int
+            or recurring["interval_count"] != 1):
         raise BillingError("live_price_mismatch")
 
     webhook_secret = secret_value("STRIPE_WEBHOOK_SECRET")

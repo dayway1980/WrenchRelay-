@@ -16,8 +16,8 @@ class FakeAPI:
         self.settings = settings
         self.result = result or {
             "id": PRICE, "livemode": True, "active": True,
-            "currency": "usd", "unit_amount": 9900,
-            "recurring": {"interval": "month"},
+            "currency": "usd", "unit_amount": 9900, "type": "recurring",
+            "recurring": {"interval": "month", "interval_count": 1},
         }
         self.calls = []
 
@@ -70,6 +70,21 @@ class LivePreflightTests(unittest.TestCase):
             run(ACCOUNT, PRICE, 0, api_factory=FakeAPI)
         with self.assertRaisesRegex(BillingError, "invalid_configuration"):
             run(ACCOUNT, "../price", 9900, api_factory=FakeAPI)
+
+    def test_annualized_and_malformed_monthly_prices_fail_closed(self):
+        base = FakeAPI(None).result
+        for interval_count in (12, 2, 0, None, "1", True):
+            price = {**base, "recurring": {
+                "interval": "month", "interval_count": interval_count,
+            }}
+            with self.subTest(interval_count=interval_count):
+                with self.assertRaisesRegex(BillingError, "live_price_mismatch"):
+                    run(ACCOUNT, PRICE, 9900, api_factory=lambda settings: FakeAPI(settings, result=price))
+
+    def test_non_recurring_price_fails_closed(self):
+        price = {**FakeAPI(None).result, "type": "one_time"}
+        with self.assertRaisesRegex(BillingError, "live_price_mismatch"):
+            run(ACCOUNT, PRICE, 9900, api_factory=lambda settings: FakeAPI(settings, result=price))
 
     def test_actual_transport_rejects_mismatched_account(self):
         # Exercise StripeAPI's real account-binding guard without network or keys.
