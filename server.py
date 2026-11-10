@@ -559,8 +559,8 @@ async def billing_webhook(request: Request):
 
 @app.get("/api/admin/status")
 def admin_status(user=Depends(current_user)):
-    admin_email = os.getenv("ADMIN_EMAIL", "").lower()
-    if admin_email and user.lower() != admin_email:
+    admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    if not admin_email or user.lower() != admin_email:
         raise HTTPException(403, "Admin only")
     return {
         "database_configured": bool(MONGO_URL),
