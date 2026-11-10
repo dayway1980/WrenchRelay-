@@ -12,6 +12,10 @@
   },
   "rewrites": [
     {
+      "source": "/__bridge/railway-health",
+      "destination": "https://wrenchrelay-app-production.up.railway.app/api/health"
+    },
+    {
       "source": "/api",
       "destination": {
         "service": "api"
