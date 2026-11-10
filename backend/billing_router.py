@@ -9,10 +9,24 @@ from pydantic import BaseModel
 
 from db import db, now_iso
 from security import CurrentUser, require_organization
+from redirect_validation import approved_redirect
 
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 PRICES = {"starter": os.environ.get("STRIPE_PRICE_STARTER"), "pro": os.environ.get("STRIPE_PRICE_PRO")}
+
+
+def _approved_frontend_redirect(value: str, *, origin_only: bool = False) -> str:
+    """Require a redirect to one explicitly configured, trusted frontend origin."""
+    configured = [os.environ.get("FRONTEND_URL", "")]
+    configured += [item.strip() for item in os.environ.get("CORS_ORIGINS", "").split(",") if item.strip()]
+    if not any(item and item != "*" for item in configured):
+        raise HTTPException(status_code=503, detail="Frontend redirect origins are not configured.")
+    try:
+        return approved_redirect(value, configured, origin_only=origin_only)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="The billing redirect URL is not approved.") from exc
+
 
 
 class CheckoutInput(BaseModel):
@@ -31,6 +45,7 @@ def stripe_client():
 @router.post("/create-checkout-session")
 async def checkout(payload: CheckoutInput, user: CurrentUser):
     await require_organization(user, payload.organization_id, "members:read")
+    origin = _approved_frontend_redirect(payload.origin_url, origin_only=True)
     price = PRICES.get(payload.plan)
     if not price:
         raise HTTPException(status_code=422, detail="Choose Starter or Pro.")
@@ -41,18 +56,19 @@ async def checkout(payload: CheckoutInput, user: CurrentUser):
         created = stripe.Customer.create(email=user["email"], name=org["name"], metadata={"organization_id": payload.organization_id})
         customer = created.id
         await db.organizations.update_one({"id": payload.organization_id}, {"$set": {"stripe_customer_id": customer}})
-    session = stripe.checkout.Session.create(customer=customer, mode="subscription", line_items=[{"price": price, "quantity": max(1, org.get("subscription", {}).get("seat_count", 1))}], subscription_data={"trial_period_days": 14}, success_url=f"{payload.origin_url}/settings/billing?success=1", cancel_url=f"{payload.origin_url}/settings/billing?cancel=1", metadata={"organization_id": payload.organization_id, "plan": payload.plan})
+    session = stripe.checkout.Session.create(customer=customer, mode="subscription", line_items=[{"price": price, "quantity": max(1, org.get("subscription", {}).get("seat_count", 1))}], subscription_data={"trial_period_days": 14}, success_url=f"{origin}/settings/billing?success=1", cancel_url=f"{origin}/settings/billing?cancel=1", metadata={"organization_id": payload.organization_id, "plan": payload.plan})
     return {"url": session.url, "session_id": session.id}
 
 
 @router.post("/create-portal-session")
 async def portal(organization_id: str, return_url: str, user: CurrentUser):
     await require_organization(user, organization_id, "members:read")
+    safe_return_url = _approved_frontend_redirect(return_url)
     stripe_client()
     org = await db.organizations.find_one({"id": organization_id}, {"_id": 0})
     if not org.get("stripe_customer_id"):
         raise HTTPException(status_code=404, detail="No billing customer exists yet.")
-    session = stripe.billing_portal.Session.create(customer=org["stripe_customer_id"], return_url=return_url)
+    session = stripe.billing_portal.Session.create(customer=org["stripe_customer_id"], return_url=safe_return_url)
     return {"url": session.url}
 
 

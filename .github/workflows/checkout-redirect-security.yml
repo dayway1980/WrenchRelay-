@@ -1,0 +1,28 @@
+name: Checkout redirect security
+
+on:
+  pull_request:
+    paths:
+      - 'backend/payments_router.py'
+      - 'backend/billing_router.py'
+      - 'backend/redirect_validation.py'
+      - 'tests/test_checkout_redirect_validation.py'
+      - '.github/workflows/checkout-redirect-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  redirect-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test redirect origin checks without secrets or external requests
+        run: python -m unittest discover -s tests -p 'test_checkout_redirect_validation.py' -v
+      - name: Check syntax of edited backend modules
+        run: python -m py_compile backend/redirect_validation.py backend/payments_router.py backend/billing_router.py
