@@ -104,6 +104,26 @@ class CandidateSyntheticFlow(unittest.TestCase):
         self.assertEqual(bob.get("/api/knowledge/search", params={"q": "SYNTHETIC"}).json(), [])
         self.assertEqual(self.client().get("/api/work-orders").status_code, 401)
 
+    def test_admin_status_requires_explicit_configured_admin_identity(self):
+        alice = self.client()
+        self.register(alice, "alice@example.com", "Alice")
+        with patch.dict(os.environ, {"ADMIN_EMAIL": ""}):
+            self.assertEqual(alice.get("/api/admin/status").status_code, 403)
+        with patch.dict(os.environ, {"ADMIN_EMAIL": " " }):
+            self.assertEqual(alice.get("/api/admin/status").status_code, 403)
+        with patch.dict(os.environ, {"ADMIN_EMAIL": "bob@example.com"}):
+            self.assertEqual(alice.get("/api/admin/status").status_code, 403)
+        with patch.dict(os.environ, {"ADMIN_EMAIL": " ALICE@EXAMPLE.COM "}):
+            approved = alice.get("/api/admin/status")
+            self.assertEqual(approved.status_code, 200, approved.text[:300])
+            self.assertEqual(approved.json()["version"], "2.0.0")
+
+    def test_server_and_api_reject_unconfigured_admin(self):
+        for entry in (ROOT / "server.py", ROOT / "api-service" / "main.py"):
+            source = entry.read_text(encoding="utf-8")
+            with self.subTest(entry=str(entry)):
+                self.assertIn("if not admin_email or user.lower() != admin_email:", source)
+
     def test_unknown_billing_plan_is_rejected_without_stripe_request(self):
         alice = self.client()
         self.register(alice, "alice@example.com", "Alice")
