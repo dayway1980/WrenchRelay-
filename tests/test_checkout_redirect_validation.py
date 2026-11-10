@@ -55,6 +55,15 @@ class CheckoutRedirectTests(unittest.TestCase):
             with self.subTest(origins=origins), self.assertRaises(ValueError):
                 approved_redirect("https://www.wrenchrelayllc.com/x", origins)
 
+    def test_mixed_cors_wildcard_does_not_block_explicit_origin(self):
+        trusted = "https://www.wrenchrelayllc.com/settings/billing?success=1"
+        self.assertEqual(approved_redirect(trusted, [FRONTENDS[0], "*"]), trusted)
+        with self.assertRaises(ValueError):
+            approved_redirect(
+                "https://attacker.example/settings/billing",
+                [FRONTENDS[0], "*"],
+            )
+
     def test_explicit_local_development_origin_can_use_http(self):
         self.assertEqual(
             approved_redirect("http://localhost:3000/settings/billing", ["http://localhost:3000"]),
