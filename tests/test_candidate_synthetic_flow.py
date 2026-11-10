@@ -68,7 +68,7 @@ class CandidateSyntheticFlow(unittest.TestCase):
 
     def test_registration_session_cookie_logout_and_expired_identity(self):
         client = self.client()
-        result = self.register(client, "alice@synthetic.invalid", "Synthetic Alice")
+        result = self.register(client, "alice@example.com", "Synthetic Alice")
         cookie = result.headers.get("set-cookie", "").lower()
         self.assertIn("wrenchrelay_session", cookie)
         self.assertIn("secure", cookie)
@@ -77,7 +77,7 @@ class CandidateSyntheticFlow(unittest.TestCase):
 
         profile = client.get("/api/me")
         self.assertEqual(profile.status_code, 200, profile.text[:300])
-        self.assertEqual(profile.json()["email"], "alice@synthetic.invalid")
+        self.assertEqual(profile.json()["email"], "alice@example.com")
 
         self.assertEqual(client.post("/api/auth/logout").status_code, 200)
         self.assertEqual(client.get("/api/me").status_code, 401)
@@ -88,8 +88,8 @@ class CandidateSyntheticFlow(unittest.TestCase):
 
     def test_work_order_owner_isolation_and_anonymous_denial(self):
         alice, bob = self.client(), self.client()
-        self.register(alice, "alice@synthetic.invalid", "Alice")
-        self.register(bob, "bob@synthetic.invalid", "Bob")
+        self.register(alice, "alice@example.com", "Alice")
+        self.register(bob, "bob@example.com", "Bob")
 
         saved = alice.post("/api/work-orders", json={
             "mode": "industrial",
@@ -97,7 +97,7 @@ class CandidateSyntheticFlow(unittest.TestCase):
             "narrative": "Synthetic test document; no real machine or customer.",
         })
         self.assertEqual(saved.status_code, 200, saved.text[:400])
-        self.assertEqual(saved.json()["owner"], "alice@synthetic.invalid")
+        self.assertEqual(saved.json()["owner"], "alice@example.com")
         self.assertEqual(len(alice.get("/api/work-orders").json()), 1)
         self.assertEqual(bob.get("/api/work-orders").status_code, 200)
         self.assertEqual(bob.get("/api/work-orders").json(), [])
@@ -106,19 +106,19 @@ class CandidateSyntheticFlow(unittest.TestCase):
 
     def test_unknown_billing_plan_is_rejected_without_stripe_request(self):
         alice = self.client()
-        self.register(alice, "alice@synthetic.invalid", "Alice")
+        self.register(alice, "alice@example.com", "Alice")
         response = alice.post("/api/billing/checkout", json={"plan": "not-a-real-plan"})
         self.assertEqual(response.status_code, 400)
 
     def test_bad_signature_is_rejected_and_valid_test_signature_is_accepted(self):
         alice = self.client()
-        self.register(alice, "alice@synthetic.invalid", "Alice")
+        self.register(alice, "alice@example.com", "Alice")
         body = json.dumps({
             "id": "evt_synthetic_signed_1",
             "type": "checkout.session.completed",
             "data": {"object": {
-                "metadata": {"email": "alice@synthetic.invalid", "plan": "pro"},
-                "client_reference_id": "alice@synthetic.invalid",
+                "metadata": {"email": "alice@example.com", "plan": "pro"},
+                "client_reference_id": "alice@example.com",
                 "customer": "cus_synthetic",
                 "subscription": "sub_synthetic",
             }},
@@ -134,7 +134,7 @@ class CandidateSyntheticFlow(unittest.TestCase):
                 headers={"Content-Type": "application/json", "Stripe-Signature": bad_header},
             )
             self.assertEqual(rejected.status_code, 400, rejected.text[:300])
-            self.assertEqual(self.db.users.find_one({"email": "alice@synthetic.invalid"})["plan"], "free")
+            self.assertEqual(self.db.users.find_one({"email": "alice@example.com"})["plan"], "free")
 
             message = f"{timestamp}.".encode("ascii") + body
             digest = hmac.new(
@@ -147,7 +147,7 @@ class CandidateSyntheticFlow(unittest.TestCase):
             )
             self.assertEqual(accepted.status_code, 200, accepted.text[:300])
             self.assertTrue(accepted.json()["received"])
-            self.assertEqual(self.db.users.find_one({"email": "alice@synthetic.invalid"})["plan"], "pro")
+            self.assertEqual(self.db.users.find_one({"email": "alice@example.com"})["plan"], "pro")
 
 
 if __name__ == "__main__":
