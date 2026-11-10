@@ -1,0 +1,27 @@
+name: WrenchRelay legal entity copy
+on:
+  pull_request:
+    paths:
+      - 'src/App.js'
+      - 'tests/test_legal_entity_copy.py'
+      - '.github/workflows/wrenchrelay-legal-copy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/App.js'
+      - 'tests/test_legal_entity_copy.py'
+      - '.github/workflows/wrenchrelay-legal-copy.yml'
+permissions:
+  contents: read
+jobs:
+  provider-copy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p 'test_legal_entity_copy.py' -v
