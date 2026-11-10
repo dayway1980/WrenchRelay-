@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">WrenchRelay Industrial</string>
+  <string name="account_settings">Privacy and account deletion</string>
+  <string name="account_settings_content_description">Open the privacy policy or request account deletion</string>
+  <string name="account_dialog_title">Privacy and account</string>
+  <string name="privacy_action">Read privacy policy</string>
+  <string name="deletion_action">Request account deletion</string>
+  <string name="cancel">Cancel</string>
+  <string name="link_unavailable">This account link is unavailable</string>
+  <string name="open_failed">Unable to open link</string>
+  <string name="file_picker_unavailable">File picker unavailable</string>
+  <string name="microphone_fallback">Microphone unavailable; use text input instead</string>
+</resources>

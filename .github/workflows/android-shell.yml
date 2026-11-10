@@ -50,6 +50,11 @@ jobs:
           set -euo pipefail
           python3 verify_play_release.py --self-test
           python3 -m unittest discover -s . -p 'test_play_signing.py' -v
+      - name: Check English/Spanish native resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s . -p 'test_locales.py' -v
       - name: Lint release
         run: gradle --no-daemon :app:lintRelease
       - name: Run unit tests

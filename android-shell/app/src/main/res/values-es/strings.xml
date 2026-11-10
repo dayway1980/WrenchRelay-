@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">WrenchRelay Industrial</string>
+  <string name="account_settings">Privacidad y eliminación de cuenta</string>
+  <string name="account_settings_content_description">Abrir la política de privacidad o solicitar la eliminación de la cuenta</string>
+  <string name="account_dialog_title">Privacidad y cuenta</string>
+  <string name="privacy_action">Leer política de privacidad</string>
+  <string name="deletion_action">Solicitar eliminación de cuenta</string>
+  <string name="cancel">Cancelar</string>
+  <string name="link_unavailable">Este enlace de cuenta no está disponible</string>
+  <string name="open_failed">No se puede abrir el enlace</string>
+  <string name="file_picker_unavailable">Selector de archivos no disponible</string>
+  <string name="microphone_fallback">Micrófono no disponible; utilice la entrada de texto</string>
+</resources>
