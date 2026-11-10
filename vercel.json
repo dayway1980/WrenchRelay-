@@ -12,6 +12,14 @@
   },
   "rewrites": [
     {
+      "source": "/__bridge/railway-health",
+      "destination": "https://wrenchrelay-app-production.up.railway.app/api/health"
+    },
+    {
+      "source": "/__bridge/railway-openapi",
+      "destination": "https://wrenchrelay-app-production.up.railway.app/openapi.json"
+    },
+    {
       "source": "/api",
       "destination": {
         "service": "api"

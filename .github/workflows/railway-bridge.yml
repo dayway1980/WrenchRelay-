@@ -1,0 +1,30 @@
+name: Railway gateway bridge probe
+on:
+  pull_request:
+    paths:
+      - 'vercel.json'
+      - 'tests/test_railway_bridge.py'
+      - 'scripts/preview_release_gate.py'
+      - '.github/workflows/railway-bridge.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'vercel.json'
+      - 'tests/test_railway_bridge.py'
+      - 'scripts/preview_release_gate.py'
+      - '.github/workflows/railway-bridge.yml'
+permissions:
+  contents: read
+jobs:
+  route-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p 'test_railway_bridge.py' -v
+      - run: python scripts/preview_release_gate.py --self-test
