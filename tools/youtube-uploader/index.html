@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>WrenchRelay YouTube Uploader</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#091625;color:#ecf6fb}
+main{max-width:740px;margin:auto;padding:28px 18px 70px}
+.brand{font-weight:800;color:#4de1c9;letter-spacing:.12em;font-size:.85rem}
+h1{font-size:clamp(2rem,6vw,3.2rem);line-height:1.1;letter-spacing:-.03em}
+p{color:#c0cfdf}section{margin:20px 0;padding:20px;border:1px solid #36516a;border-radius:16px;background:#142337}
+label{display:block;margin:14px 0 5px;font-weight:700}
+input,textarea,select{width:100%;padding:12px;border:1px solid #69849e;border-radius:9px;background:#081725;color:#fff;font:inherit}
+textarea{min-height:90px}button,.btn{display:inline-block;margin-top:16px;padding:13px 17px;border:0;border-radius:10px;background:#45dbc4;color:#09222b;font-weight:800;font:inherit;cursor:pointer;text-decoration:none}
+button:disabled{opacity:.45;cursor:not-allowed}
+a{color:#65e5d3}.muted{font-size:.88rem}.status{padding:9px 12px;border-left:3px solid #45dbc4;background:#1a3442;overflow-wrap:anywhere}
+progress{width:100%;height:17px;margin-top:14px}[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<div class="brand">WRENCHRELAY · PITCH OPERATIONS</div>
+<h1>Upload the pitch video from your phone.</h1>
+<p>No downloaded JSON, API key, Google Cloud billing, or client secret is needed. This page connects your own YouTube channel using Google's permission screen.</p>
+<section>
+<h2>1. Connect Google</h2>
+<label for="id">OAuth Client ID (public identifier)</label>
+<input id="id" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+<p class="muted">In Google Cloud choose <strong>Web application</strong> and add this website's exact HTTPS address under <strong>Authorized JavaScript origins</strong>. Only copy your Client ID here, never your secret.</p>
+<button id="connect">Connect YouTube</button>
+<p class="status" id="connection" role="status">Not connected.</p>
+</section>
+<section>
+<h2>2. Select your pitch video</h2>
+<p><a href="https://app.heygen.com/videos/7d6011398858c0a61be2120b27f15b22" target="_blank" rel="noopener noreferrer">Open completed 48-second Duquesne video in HeyGen</a> and save its MP4 on your phone.</p>
+<label for="video">Video file</label><input id="video" type="file" accept="video/*,.mp4,.mov">
+<label for="title">Title</label>
+<input id="title" maxlength="100" value="WrenchRelay | Voice-First Maintenance AI — Duquesne Pitch">
+<label for="description">Description</label>
+<textarea id="description" maxlength="5000">WrenchRelay is a prototype-stage, voice-first maintenance documentation and troubleshooting assistant for industrial and automotive workflows. It creates human-reviewed maintenance work orders, evidence-ranked plans, and clear handoffs.</textarea>
+<label for="privacy">Visibility</label>
+<select id="privacy"><option value="unlisted">Unlisted (anyone with link can view)</option><option value="private">Private</option><option value="public">Public</option></select>
+<button id="upload" disabled>Upload to YouTube</button>
+<progress id="progress" max="100" value="0" hidden></progress>
+<p class="status" id="status" role="status">Connect Google and select the MP4 first.</p>
+<div id="result" hidden><a id="link" href="#" target="_blank" rel="noopener noreferrer">Open uploaded video</a> · <button id="copy">Copy link</button></div>
+</section>
+<section>
+<h2>Faster option if Google blocks the API</h2>
+<p>For the November 15 deadline, the official YouTube Studio upload works without any developer setup.</p>
+<a class="btn" href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a>
+</section>
+<p class="muted">Security: the access token exists only while this page is open. The uploader sends the chosen file directly from your browser to YouTube; it does not save your token or video to WrenchRelay servers. Only the public Client ID is remembered in this browser. This early prototype has not been tested against your Google account.</p>
+</main>
+<script>
+(function(){
+"use strict";
+var el=function(id){return document.getElementById(id)}, token="",busy=false,videoUrl="";
+var scope="https://www.googleapis.com/auth/youtube.upload";
+var setStatus=function(s){el("status").textContent=s};
+function sync(){el("upload").disabled=busy||!token||!el("video").files.length}
+try{el("id").value=localStorage.getItem("wrenchrelay_youtube_client_id")||""}catch(e){}
+el("video").onchange=sync;
+el("connect").onclick=function(){
+ var id=el("id").value.trim();
+ if(!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(id)){el("connection").textContent="Enter a Client ID ending in .apps.googleusercontent.com, not a secret.";return}
+ if(!window.google||!google.accounts||!google.accounts.oauth2){el("connection").textContent="Google sign-in has not loaded. Reload the page.";return}
+ try{localStorage.setItem("wrenchrelay_youtube_client_id",id)}catch(e){}
+ el("connection").textContent="Opening Google sign-in. Select the account for your YouTube channel.";
+ try{
+ var client=google.accounts.oauth2.initTokenClient({client_id:id,scope:scope,
+ callback:function(r){
+  if(!r||r.error||!r.access_token){token="";el("connection").textContent="Google did not grant access. "+((r&&r.error)||"Try again.");sync();return}
+  if(!google.accounts.oauth2.hasGrantedAllScopes(r,scope)){token="";el("connection").textContent="YouTube upload permission not granted.";sync();return}
+  token=r.access_token;el("connection").textContent="Connected. Your video will go to the channel authorized in Google.";setStatus("Ready to upload.");sync()
+ },
+ error_callback:function(e){el("connection").textContent="Google sign-in did not open: "+((e&&e.type)||"check pop-ups")}
+ });
+ client.requestAccessToken({prompt:"consent"});
+ }catch(e){el("connection").textContent="Google connection error: "+e.message}
+};
+function put(url,blob,offset,size){
+ return new Promise(function(resolve,reject){
+ var req=new XMLHttpRequest();
+ req.open("PUT",url,true);
+ req.setRequestHeader("Authorization","Bearer "+token);
+ req.setRequestHeader("Content-Type",blob.type||"video/mp4");
+ req.setRequestHeader("Content-Range","bytes "+offset+"-"+(offset+blob.size-1)+"/"+size);
+ req.upload.onprogress=function(e){if(e.lengthComputable)el("progress").value=Math.min(99,Math.floor(100*(offset+e.loaded)/size))};
+ req.onload=function(){
+  if(req.status===200||req.status===201){
+   try{resolve({done:true,data:JSON.parse(req.responseText)})}catch(e){reject(new Error("YouTube response could not be read."))}
+  }else if(req.status===308){
+   var m=(req.getResponseHeader("Range")||"").match(/(\d+)-(\d+)$/);
+   resolve({done:false,next:m?Number(m[2])+1:offset+blob.size});
+  }else{reject(new Error("YouTube returned HTTP "+req.status+": "+req.responseText.slice(0,160)))}
+ };
+ req.onerror=function(){reject(new Error("Network or browser upload error."))};
+ req.send(blob)
+ })
+}
+el("upload").onclick=async function(){
+ var f=el("video").files[0],title=el("title").value.trim();
+ if(!token||!f){setStatus("Connect Google and choose an MP4.");return}
+ if(!title){setStatus("Enter the video title.");return}
+ if(!f.size||(!f.type.startsWith("video/")&&!/\.(mp4|mov)$/i.test(f.name))){setStatus("Choose a non-empty video file.");return}
+ busy=true;sync();el("progress").hidden=false;el("progress").value=0;el("result").hidden=true;
+ try{
+  setStatus("Starting YouTube upload...");
+  var r=await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",{
+   method:"POST",mode:"cors",credentials:"omit",
+   headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Length":String(f.size),"X-Upload-Content-Type":f.type||"video/mp4"},
+   body:JSON.stringify({snippet:{title:title,description:el("description").value,categoryId:"28"},status:{privacyStatus:el("privacy").value}})
+  });
+  if(!r.ok)throw new Error("YouTube refused upload ("+r.status+"): "+(await r.text()).slice(0,180));
+  var uploadUrl=r.headers.get("Location");
+  if(!uploadUrl)throw new Error("Browser could not read the YouTube upload address.");
+  for(var offset=0;offset<f.size;){
+   setStatus("Uploading... "+Math.floor(100*offset/f.size)+"%");
+   var end=Math.min(offset+8*1024*1024,f.size);
+   var chunk=await put(uploadUrl,f.slice(offset,end,f.type||"video/mp4"),offset,f.size);
+   if(chunk.done){
+    if(!chunk.data||!chunk.data.id)throw new Error("YouTube did not return a video ID.");
+    videoUrl="https://www.youtube.com/watch?v="+encodeURIComponent(chunk.data.id);
+    el("link").href=videoUrl;el("result").hidden=false;el("progress").value=100;
+    setStatus("Upload confirmed! Copy your YouTube link into the Duquesne application.");return;
+   }
+   if(chunk.next<=offset||chunk.next>f.size)throw new Error("Unexpected upload progress.");
+   offset=chunk.next;
+  }
+  throw new Error("Upload not confirmed by YouTube.");
+ }catch(e){setStatus("Upload not confirmed: "+e.message+" Try the official Studio option below.")}
+ finally{busy=false;sync()}
+};
+el("copy").onclick=async function(){try{await navigator.clipboard.writeText(videoUrl);setStatus("Video link copied.")}catch(e){setStatus("Open the YouTube video and copy its address.")}};
+})();
+</script>
+</body></html>
