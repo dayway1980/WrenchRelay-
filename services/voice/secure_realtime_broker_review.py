@@ -10,13 +10,13 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/realtime", tags=["voice"])
 
 class VerifiedPrincipal(BaseModel):
-    user_id: str
-    tenant_id: str
+    user_id: str = Field(min_length=1)
+    tenant_id: str = Field(min_length=1)
 
 async def require_verified_principal(request: Request) -> VerifiedPrincipal:
     # Intentionally fail closed. Integrate the existing server-side auth and
