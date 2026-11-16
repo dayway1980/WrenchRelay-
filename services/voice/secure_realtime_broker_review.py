@@ -5,12 +5,12 @@ distributed rate limiting, provider credentials, and deployment parity are verif
 The client never receives the server API key.
 """
 import os
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from backend.security import get_current_user, require_organization
 
 router = APIRouter(prefix="/api/realtime", tags=["voice"])
 
@@ -18,17 +18,20 @@ class VerifiedPrincipal(BaseModel):
     user_id: str = Field(min_length=1)
     tenant_id: str = Field(min_length=1)
 
-async def require_verified_principal(request: Request) -> VerifiedPrincipal:
-    # Intentionally fail closed. Integrate the existing server-side auth and
-    # tenant-membership verifier; NEVER trust user_id/tenant_id from request body.
-    raise HTTPException(status_code=403, detail="Voice authentication not commissioned")
+async def require_verified_principal(
+    organization_id: str,
+    user: dict = Depends(get_current_user),
+) -> VerifiedPrincipal:
+    await require_organization(user, organization_id, "assistant:use")
+    return VerifiedPrincipal(user_id=user["id"], tenant_id=organization_id)
 
 async def enforce_voice_quota(principal: VerifiedPrincipal) -> None:
     # Replace with atomic distributed per-user AND per-tenant quotas.
     raise HTTPException(status_code=429, detail="Voice rate limiting not commissioned")
 
-@router.post("/session")
+@router.post("/{organization_id}/session")
 async def create_session(
+    organization_id: str,
     request: Request,
     principal: VerifiedPrincipal = Depends(require_verified_principal),
 ) -> dict[str, Any]:
