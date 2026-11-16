@@ -1,5 +1,5 @@
 name = "ideasapplied-voice"
-main = "src/index.ts"
+main = "src/index.js"
 compatibility_date = "2026-11-16"
 
 [ai]
