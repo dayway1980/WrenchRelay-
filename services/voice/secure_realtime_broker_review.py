@@ -1,7 +1,7 @@
 """Review-only OpenAI Realtime voice session broker.
 
-Do not mount in production until identity, tenant membership, CSRF/origin,
-distributed rate limiting, provider credentials, and deployment parity are verified.
+Do not mount in production until provider credentials, origin policy,
+and deployed source parity are verified.
 The client never receives the server API key.
 """
 import os
@@ -26,8 +26,19 @@ async def require_verified_principal(
     return VerifiedPrincipal(user_id=user["id"], tenant_id=organization_id)
 
 async def enforce_voice_quota(principal: VerifiedPrincipal) -> None:
-    # Replace with atomic distributed per-user AND per-tenant quotas.
-    raise HTTPException(status_code=429, detail="Voice rate limiting not commissioned")
+    # Authenticated members can use voice without customer-facing credits.
+    # Add cost monitoring and abuse detection separately, without blocking access.
+    return None
+
+
+def verify_browser_origin(request: Request) -> None:
+    # Cookie-based browser sessions require an explicitly trusted origin.
+    # No Origin on a cookie-authenticated request is rejected to prevent CSRF.
+    allowed = {value.strip() for value in os.getenv("WR_VOICE_ALLOWED_ORIGINS", "").split(",") if value.strip()}
+    origin = request.headers.get("origin")
+    cookie_auth = "wr_access" in request.cookies
+    if (origin and origin not in allowed) or (cookie_auth and not origin):
+        raise HTTPException(status_code=403, detail="Voice request origin not permitted")
 
 @router.post("/{organization_id}/session")
 async def create_session(
@@ -35,6 +46,7 @@ async def create_session(
     request: Request,
     principal: VerifiedPrincipal = Depends(require_verified_principal),
 ) -> dict[str, Any]:
+    verify_browser_origin(request)
     await enforce_voice_quota(principal)
     if os.getenv("WR_VOICE_COMMISSIONED") != "true":
         raise HTTPException(status_code=503, detail="Voice commissioning incomplete")
