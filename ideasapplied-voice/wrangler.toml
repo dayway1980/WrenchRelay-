@@ -1,0 +1,11 @@
+name = "ideasapplied-voice"
+main = "src/index.ts"
+compatibility_date = "2026-11-16"
+
+[ai]
+binding = "AI"
+
+[vars]
+VOICE_AUTH_URL = "https://www.wrenchrelay.com/api/me"
+# Configure VOICE_ALLOWED_ORIGINS, provider secrets, and identity integrations
+# per deployment. Never store secrets in this file.
