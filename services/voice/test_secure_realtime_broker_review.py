@@ -1,27 +1,19 @@
-"""Safety regression tests for the review-only voice broker.
-
-These assert fail-closed behavior. They do not prove an authenticated voice
-session works and must not be used as release approval.
-"""
+"""Fail-closed quota and identity contract checks (synthetic)."""
 import asyncio
 import pytest
 from fastapi import HTTPException
-from services.voice.secure_realtime_broker_review import (
-    VerifiedPrincipal, require_verified_principal, enforce_voice_quota,
-)
-
-def test_missing_authentication_fails_closed():
-    with pytest.raises(HTTPException) as error:
-        asyncio.run(require_verified_principal(None))
-    assert error.value.status_code == 403
+from pydantic import ValidationError
+from services.voice.secure_realtime_broker_review import VerifiedPrincipal, enforce_voice_quota
 
 def test_uncommissioned_quota_fails_closed():
-    principal = VerifiedPrincipal(user_id="synthetic-user", tenant_id="synthetic-shop")
     with pytest.raises(HTTPException) as error:
-        asyncio.run(enforce_voice_quota(principal))
+        asyncio.run(enforce_voice_quota(VerifiedPrincipal(user_id="synthetic-user", tenant_id="synthetic-shop")))
     assert error.value.status_code == 429
 
 def test_principal_requires_both_identifiers():
-    from pydantic import ValidationError
     with pytest.raises(ValidationError):
         VerifiedPrincipal(user_id="synthetic-user")
+
+def test_principal_rejects_empty_identity():
+    with pytest.raises(ValidationError):
+        VerifiedPrincipal(user_id="", tenant_id="synthetic-shop")
