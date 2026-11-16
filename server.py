@@ -1,4 +1,5 @@
 import os
+import httpx
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -410,6 +411,47 @@ def me(user=Depends(current_user)):
         "entitlement": ent,
         "usage": {"month": month_key(), "count": count, "limit": ent["ai_limit"]},
     }
+
+
+@app.post("/api/realtime/session")
+async def realtime_session(request: Request, user=Depends(current_user)):
+    """Issue a short-lived OpenAI voice credential for an existing signed-in account.
+
+    This is an account-scoped compatibility endpoint for the deployed server.py
+    auth system, not an organization-aware authorization endpoint.
+    """
+    # Same-origin browser request; bearer clients are handled by current_user.
+    origin = request.headers.get("origin")
+    allowed = set(origins)
+    allowed.add(FRONTEND_URL)
+    if origin and origin not in allowed:
+        raise HTTPException(403, "Untrusted voice origin")
+    if request.cookies.get(SESSION_COOKIE) and not origin:
+        raise HTTPException(403, "Voice origin required")
+    if os.getenv("WR_VOICE_COMMISSIONED") != "true":
+        raise HTTPException(503, "Voice commissioning incomplete")
+    user_doc(user)  # Recheck that this authenticated account still exists.
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise HTTPException(503, "Voice provider is not configured")
+    payload = {"session": {"type": "realtime",
+                           "model": os.getenv("WR_REALTIME_MODEL", "gpt-realtime"),
+                           "audio": {"output": {"voice": "marin"}}}}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/realtime/client_secrets",
+                headers={"Authorization": f"Bearer {key}"},
+                json=payload,
+            )
+            response.raise_for_status()
+            result = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(502, "Voice provider unavailable") from exc
+    secret = result.get("value")
+    if not isinstance(secret, str) or not secret:
+        raise HTTPException(502, "Voice session credential missing")
+    return {"client_secret": secret, "expires_at": result.get("expires_at")}
 
 
 @app.post("/api/ai/work-order")
