@@ -431,6 +431,32 @@ async def realtime_session(request: Request, user=Depends(current_user)):
     if os.getenv("WR_VOICE_COMMISSIONED") != "true":
         raise HTTPException(503, "Voice commissioning incomplete")
     user_doc(user)  # Recheck that this authenticated account still exists.
+    # Atomic distributed issuance limits. Never fall back to an in-process counter:
+    # multiple Railway replicas must share the same authoritative quota.
+    from pymongo import ReturnDocument
+    from pymongo.errors import PyMongoError
+    if _db is None:
+        raise HTTPException(503, "Voice quota store unavailable")
+    now = datetime.now(timezone.utc)
+    try:
+        minute_cap = max(1, min(int(os.getenv("WR_VOICE_MINUTE_CAP", "3")), 10))
+        daily_cap = max(1, min(int(os.getenv("WR_VOICE_DAILY_CAP", "20")), 100))
+        for period, bucket, cap in (
+            ("day", now.strftime("%Y%m%d"), daily_cap),
+            ("minute", now.strftime("%Y%m%d%H%M"), minute_cap),
+        ):
+            quota = _db["voice_session_issuance"].find_one_and_update(
+                {"_id": f"{period}:{bucket}:{user}"},
+                {"$inc": {"count": 1}, "$setOnInsert": {"created_at": now}},
+                upsert=True,
+                return_document=ReturnDocument.AFTER,
+            )
+            if quota is None or quota.get("count", cap + 1) > cap:
+                raise HTTPException(429, "Voice session issuance limit reached")
+    except HTTPException:
+        raise
+    except (PyMongoError, ValueError, TypeError):
+        raise HTTPException(503, "Voice quota store unavailable")
     key = os.getenv("OPENAI_API_KEY")
     if not key:
         raise HTTPException(503, "Voice provider is not configured")
