@@ -46,6 +46,8 @@ class VoiceWorkDraft:
             raise ValueError("Draft changed; review again")
         if self.missing():
             raise ValueError("Required work-order facts are missing")
+        if self.approved_revision == revision and self.idempotency_key:
+            return  # repeated approval of the same revision must reuse the key
         self.approved_revision = revision
         self.idempotency_key = f"{self.organization_id}:{self.draft_id}:{revision}:{uuid4().hex}"
 
