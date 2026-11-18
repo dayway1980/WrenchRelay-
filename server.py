@@ -570,3 +570,49 @@ def admin_status(user=Depends(current_user)):
         "frontend_url": FRONTEND_URL,
         "version": APP_VERSION,
     }
+
+@app.post("/api/voice/realtime-session")
+def create_realtime_session(request: Request, email: str = Depends(current_user)):
+    """Authenticated same-origin broker; permanent API key never reaches browser."""
+    from urllib.request import Request as URLRequest, urlopen
+    from urllib.error import HTTPError, URLError
+    import json
+    if not OPENAI_API_KEY:
+        raise HTTPException(503, "Realtime voice is not configured")
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/") and origin not in origins:
+        raise HTTPException(403, "Unapproved voice origin")
+    user_doc(email)
+    body = {
+        "session": {
+            "type": "realtime",
+            "model": os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime"),
+            "audio": {"output": {"voice": "alloy"}},
+            "instructions": (
+                "You are Rivit, a warm, conversational maintenance assistant. "
+                "Listen naturally and allow interruptions. Ask one useful question at a time. "
+                "Separate observations from hypotheses. Never claim to have saved, "
+                "approved or closed a work order without a verified tool result. "
+                "Never recommend bypassing safety controls; require qualified human verification."
+            ),
+        }
+    }
+    req = URLRequest(
+        "https://api.openai.com/v1/realtime/client_secrets",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Authorization": "Bearer " + OPENAI_API_KEY,
+                 "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=12) as response:
+            result = json.load(response)
+    except HTTPError as exc:
+        raise HTTPException(503, "Voice provider rejected session setup") from exc
+    except (URLError, TimeoutError, ValueError) as exc:
+        raise HTTPException(503, "Voice session temporarily unavailable") from exc
+    secret = result.get("value") or result.get("client_secret", {}).get("value")
+    if not secret:
+        raise HTTPException(503, "Voice provider returned no session credential")
+    return {"client_secret": secret, "model": body["session"]["model"]}
+
