@@ -23,3 +23,6 @@ async def create_indexes() -> None:
     await db.invites.create_index("token", unique=True)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier", unique=True)
+    await db.voice_drafts.create_index([("organization_id", 1), ("draft_id", 1)], unique=True)
+    await db.voice_drafts.create_index([("organization_id", 1), ("user_id", 1), ("updated_at", -1)])
+    await db.cmms_idempotency_keys.create_index([("organization_id", 1), ("idempotency_key", 1)], unique=True)
