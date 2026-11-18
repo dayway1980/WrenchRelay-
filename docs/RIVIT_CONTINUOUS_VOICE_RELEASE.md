@@ -37,3 +37,13 @@ Current code review found browser speechSynthesis in src/App.js, but the screens
 - Natural greeting uses the user's preferred name and only authorized, saved work history. Avoid repetitive greetings on navigation or reconnect. Do not automatically speak private job details on a shared device before authentication.
 - Conversational behavior: concise spoken responses, turn-taking, user interruption, follow-up questions, context continuity, and optional captions/transcript. Never claim to be ChatGPT or impersonate a person.
 - Test voice/personality combinations for switching mid-session, persistence after sign-out/sign-in, safe technical answers, mobile playback and accessibility.
+
+## Vendor-neutral CMMS conversational integration
+- Rivit acts as the technician's voice-driven interface to authorized CMMS workflows, not as an unapproved human impersonator or unrestricted UI automation.
+- Build a connector contract supporting identity mapping, tenant scoping, capability discovery, work-order search/read, assets, locations, tasks, notes, labor, parts, status, attachments and audit trails.
+- Use supported vendor APIs and scoped OAuth/service credentials, not stored user passwords or brittle screen scraping. Each connector advertises read/write capabilities; no assumption that all CMMS products expose the same features.
+- Initial integration target: Fiix read-only sandbox. Next evaluate eMaint; prioritize other vendors by actual customer demand, documentation and permitted access.
+- Conversational examples: "What did second shift do on pump P-103?", "Add that I replaced the proximity sensor", "Show the last three faults", "Draft the closeout." Resolve ambiguity by asking which asset/work order.
+- Voice may populate drafts and suggest field mappings; require user confirmation before submitting changes, closing work orders, changing asset status, ordering parts, or writing to an external CMMS. Maintain source record IDs, idempotency, provenance and audit log.
+- Gracefully handle disconnected/unsupported vendors with exportable CMMS-ready drafts and clear sync status, never false success.
+- Acceptance: two-way read and approved-write tests on each connector, field mapping round-trip, permissions and cross-tenant isolation, duplicate prevention, conflict detection, offline/reconnect behavior, and mobile voice-only journey.
