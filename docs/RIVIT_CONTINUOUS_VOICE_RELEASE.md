@@ -47,3 +47,11 @@ Current code review found browser speechSynthesis in src/App.js, but the screens
 - Voice may populate drafts and suggest field mappings; require user confirmation before submitting changes, closing work orders, changing asset status, ordering parts, or writing to an external CMMS. Maintain source record IDs, idempotency, provenance and audit log.
 - Gracefully handle disconnected/unsupported vendors with exportable CMMS-ready drafts and clear sync status, never false success.
 - Acceptance: two-way read and approved-write tests on each connector, field mapping round-trip, permissions and cross-tenant isolation, duplicate prevention, conflict detection, offline/reconnect behavior, and mobile voice-only journey.
+
+## Fiix write commissioning gates
+- Every approved draft has a stable draft ID and idempotency key. Unique MongoDB indexes must be verified before writes are enabled.
+- Only the process that atomically acquires a claim may issue an external write. Existing claims, including claimed and uncertain, must not be retried automatically.
+- Network or adapter exceptions after a claim are marked uncertain. Reconcile against authoritative Fiix records before any new attempt.
+- The Fiix write orchestrator is disabled by default and accepts only a separately validated adapter. Do not assume REST routes, Bearer auth or external ID support.
+- Run mocked duplicate-claim and uncertain-outcome tests, concurrent-claim tests against disposable MongoDB, and vendor-sandbox read/write tests before commissioning.
+- Verify approval, tenant isolation, field mapping, and recovery from database errors after external acceptance. Keep production writes off until all gates pass.
