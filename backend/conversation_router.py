@@ -48,9 +48,20 @@ async def local_action(organization_id: str, user: dict, text: str) -> dict | No
         return {"type": "created_work_order", "work_order_number": record["work_order_number"], "active_work_order": {key: value for key, value in record.items() if key != "_id"}}
     match = re.search(r"done with\s+([a-z0-9]+(?:-[a-z0-9]+)+).*(?:replaced|used) (.+)", lower)
     if match:
-        result = await db.work_orders.update_one({"organization_id": organization_id, "work_order_number": match.group(1).upper()}, {"$set": {"status": "Completed", "completed_at": now_iso(), "updated_at": now_iso()}})
-        if result.matched_count:
-            return {"type": "completed_work_order", "work_order_number": match.group(1).upper(), "parts_noted": match.group(2)}
+        # Speech is not authorization to close a work order. Capture a proposal only.
+        number = match.group(1).upper()
+        record = await db.work_orders.find_one(
+            {"organization_id": organization_id, "work_order_number": number},
+            {"_id": 0, "id": 1, "work_order_number": 1, "status": 1},
+        )
+        if record:
+            return {
+                "type": "closeout_proposal",
+                "work_order_number": number,
+                "parts_mentioned_unverified": match.group(2),
+                "message": "I drafted the closeout details. Review and approve before changing the work order.",
+                "requires_explicit_approval": True,
+            }
     return None
 
 
