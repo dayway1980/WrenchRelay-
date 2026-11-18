@@ -29,3 +29,11 @@ Status: implementation required; not approved for production until all gates pas
 
 ## Release blocker
 Current code review found browser speechSynthesis in src/App.js, but the screenshot's live voice page has not been mapped conclusively to this source. Do not deploy a speculative UI replacement.
+
+## User-selectable voice and personality
+- Provide separate controls for **voice** (available natural-sounding voice presets, preview, pace) and **personality** (tone and communication style). Changing either must not alter technical accuracy, permissions, safety constraints, or record-approval rules.
+- Offer a practical default ("Shop-Floor Friendly") plus Straight Shooter, Calm Expert, Coach, Controls Nerd, Reliability Pro, and other existing personality presets where appropriate. Allow users to switch presets and hear a short preview.
+- Persist each authenticated user's selected voice and personality as account preferences, scoped to their identity, and restore them on subsequent sessions and devices. Never infer a user's voice identity from microphone audio.
+- Natural greeting uses the user's preferred name and only authorized, saved work history. Avoid repetitive greetings on navigation or reconnect. Do not automatically speak private job details on a shared device before authentication.
+- Conversational behavior: concise spoken responses, turn-taking, user interruption, follow-up questions, context continuity, and optional captions/transcript. Never claim to be ChatGPT or impersonate a person.
+- Test voice/personality combinations for switching mid-session, persistence after sign-out/sign-in, safe technical answers, mobile playback and accessibility.
