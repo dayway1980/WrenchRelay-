@@ -39,6 +39,8 @@ LEGAL_EMAIL = os.getenv("LEGAL_EMAIL", "support@wrenchrelay.com")
 BRAVA_DOMAIN = (os.getenv("BRAVA_DOMAIN") or os.getenv("BRAVA_EMAIL_DOMAIN") or "bravatile.com").lower()
 BRAVA_LIFETIME_EMAILS = {x.strip().lower() for x in os.getenv("BRAVA_LIFETIME_EMAILS", "").split(",") if x.strip()}
 TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "14"))
+# Explicit release gate. A configured Stripe key is NOT evidence that checkout is safe.
+BILLING_COMMISSIONED = os.getenv("WRENCHRELAY_BILLING_COMMISSIONED", "").strip().lower() == "true"
 SESSION_COOKIE = "wrenchrelay_session"
 
 app = FastAPI(title="WrenchRelay API", version=APP_VERSION)
@@ -322,6 +324,7 @@ def config():
         "google_client_id": GOOGLE_CLIENT_ID,
         "google_enabled": bool(GOOGLE_CLIENT_ID and google_id_token),
         "stripe_enabled": bool((os.getenv("STRIPE_SECRET_KEY_LIVE") or os.getenv("STRIPE_SECRET_KEY")) and stripe),
+        "billing_commissioned": billing_ready(),
         "legal_entity": LEGAL_ENTITY_NAME,
         "legal_email": LEGAL_EMAIL,
         "personalities": [{"id": k, "name": k.replace("-", " ").title(), "description": v} for k, v in PERSONALITIES.items()],
@@ -491,6 +494,19 @@ def stripe_price(plan: str):
     return None
 
 
+def billing_ready() -> bool:
+    """Fail closed until live checkout, webhook, entitlement, cancellation and tax checks pass."""
+    key = stripe_key()
+    return bool(
+        BILLING_COMMISSIONED
+        and stripe
+        and key.startswith("sk_live_")
+        and os.getenv("STRIPE_WEBHOOK_SECRET")
+        and stripe_price("starter")
+        and stripe_price("pro")
+    )
+
+
 @app.post("/api/billing/checkout")
 def billing_checkout(body: CheckoutRequest, request: Request, user=Depends(current_user)):
     if body.plan not in {"starter", "pro"}:
@@ -498,6 +514,8 @@ def billing_checkout(body: CheckoutRequest, request: Request, user=Depends(curre
     u = user_doc(user)
     if is_brava(user):
         raise HTTPException(409, "Brava Tile accounts already have Pro Lifetime access")
+    if not billing_ready():
+        raise HTTPException(503, "Paid checkout is temporarily unavailable while billing is verified")
     key = stripe_key()
     price = stripe_price(body.plan)
     if not stripe or not key or not price:
