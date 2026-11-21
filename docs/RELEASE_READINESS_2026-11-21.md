@@ -42,3 +42,11 @@ This smoke test is a **source-only** regression test. It does not prove a functi
 
 ## Safety / rollback
 Do not restart, redeploy, repoint DNS, edit secrets, connect a new source, merge or enable billing on the existing Railway gateway, production backend or recovery service until the source and data parity gates above are verified. Keep current services online for existing users.
+
+
+## November 21 public-route check (read only)
+- Railway marks `wrenchrelayllc.com` and `www.wrenchrelayllc.com` DNS propagated, ownership verified, and TLS certificate valid. In the prior 24 hours its Caddy gateway handled **137 HTTP 2xx** and **1,247 HTTP 4xx** requests with **no 5xx**. A sample of 4xx paths consisted largely of automated requests for unrelated WordPress/configuration files; no inference of customer failures is warranted from the aggregate.
+- Logs include successful anonymous `GET /`, `GET /terms`, and `GET /privacy` on the WrenchRelay LLC domain. This proves a public landing page is serving responses, **not authenticated app flows**.
+- Railway's `app.wrenchrelay.com` custom-domain record is **unverified**, still issuing a certificate, and reports that its required CNAME is absent; external DNS currently resolves through a different origin. The connected Cloudflare zone `wrenchrelay.com` appears `pending`, not confirmed authoritative for public routing. Do not alter DNS based solely on the stale Railway configuration.
+- Vercel branch previews for the PR are `READY` with successful deployment checks, but are previews and do not commission the Railway backend or verify login/billing.
+- A separate browser automation was blocked by the browser service's exhausted wallet. No new fee was authorized, and no live authenticated checkout test was completed.
