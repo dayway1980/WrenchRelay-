@@ -14,7 +14,7 @@ import os
 from datetime import datetime, timezone
 from typing import Literal
 
-import requests
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -158,7 +158,7 @@ def create_voice_router(current_user, user_doc, require_db) -> APIRouter:
             },
         }
         try:
-            upstream = requests.post(
+            upstream = httpx.post(
                 VOICE_PROVIDER_URL,
                 json=payload,
                 headers={
@@ -172,7 +172,7 @@ def create_voice_router(current_user, user_doc, require_db) -> APIRouter:
             result = upstream.json()
             if not isinstance(result.get("value"), str) or not result["value"].startswith("ek_"):
                 raise ValueError("Unexpected provider credential response")
-        except (requests.RequestException, ValueError, KeyError, TypeError):
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
             _refund_failed_token(db, user, usage_key)
             # Never expose provider errors or secrets in response or logs.
             raise HTTPException(status_code=502, detail="Voice connection is temporarily unavailable.")
