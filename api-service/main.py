@@ -10,6 +10,7 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pymongo import MongoClient
 from openai import OpenAI
+from realtime_voice import create_voice_router, realtime_enabled
 
 try:
     import stripe
@@ -313,6 +314,7 @@ def health():
 @app.get("/api/config")
 def config():
     return {
+        "realtime_voice_enabled": realtime_enabled(),
         "app_name": APP_NAME,
         "version": APP_VERSION,
         "google_client_id": GOOGLE_CLIENT_ID,
@@ -324,6 +326,9 @@ def config():
         "brava_domain": BRAVA_DOMAIN,
     }
 
+
+# Separate, cost-guarded Realtime credential endpoint: authenticated and OFF by default.
+app.include_router(create_voice_router(current_user, user_doc, require_db))
 
 @app.post("/api/auth/register")
 def register(body: Register, response: Response):
