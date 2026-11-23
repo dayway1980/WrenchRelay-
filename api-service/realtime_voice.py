@@ -143,11 +143,14 @@ def create_voice_router(current_user, user_doc, require_db) -> APIRouter:
                 "instructions": _instructions(options.mode, options.language),
                 "output_modalities": ["audio"],
                 "audio": {
-                    "input": {"turn_detection": {
-                        "type": "server_vad",
-                        "create_response": True,
-                        "interrupt_response": True,
-                    }},
+                    "input": {
+                        "transcription": {"model": "gpt-transcribe", "language": "es" if options.language == "Spanish" else "en"},
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "create_response": True,
+                            "interrupt_response": True,
+                        },
+                    },
                     "output": {"voice": "marin"},
                 },
                 "tools": [],
