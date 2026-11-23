@@ -19,6 +19,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from release_safety import unisolated_preview
+
 VOICE_MODEL = "gpt-realtime-2.1"
 VOICE_PROVIDER_URL = "https://api.openai.com/v1/realtime/client_secrets"
 MAX_SESSIONS_PER_USER_DAY = 2
@@ -27,7 +29,8 @@ SECRET_TTL_SECONDS = 60
 # Production approval is TWO independent settings; both default to disabled.
 def realtime_enabled() -> bool:
     return (
-        os.getenv("WRENCHRELAY_REALTIME_ENABLED", "").strip().lower() == "true"
+        not unisolated_preview()
+        and os.getenv("WRENCHRELAY_REALTIME_ENABLED", "").strip().lower() == "true"
         and os.getenv("WRENCHRELAY_REALTIME_BUDGET_APPROVED", "").strip().lower() == "true"
         and bool(os.getenv("OPENAI_API_KEY"))
     )
