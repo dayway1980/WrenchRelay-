@@ -1,0 +1,31 @@
+name: Voice workflow capture checks
+
+on:
+  push:
+    branches:
+      - feature/voice-workflow-capture-20261123
+  pull_request:
+    paths:
+      - 'web/src/workflowCapture.mjs'
+      - 'web/src/WorkflowCapture.js'
+      - 'web/src/workflowCapture.test.mjs'
+      - 'web/src/App.js'
+      - 'web/src/styles.css'
+      - '.github/workflows/voice-workflow-capture.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-and-safety-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check module syntax
+        run: node --check web/src/workflowCapture.mjs
+      - name: Run maintenance evidence regression tests
+        run: node --test web/src/workflowCapture.test.mjs
