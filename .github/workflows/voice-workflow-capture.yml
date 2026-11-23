@@ -10,6 +10,8 @@ on:
       - 'api-service/realtime_voice.py'
       - 'api-service/main.py'
       - 'api-service/test_realtime_voice.py'
+      - 'api-service/release_safety.py'
+      - 'api-service/test_release_safety.py'
       - '.github/workflows/voice-workflow-capture.yml'
 
 permissions:
@@ -40,6 +42,6 @@ jobs:
       - name: Install isolated test dependencies
         run: python -m pip install --disable-pip-version-check 'fastapi==0.115.8' 'httpx==0.28.1'
       - name: Compile voice service modules
-        run: python -m py_compile api-service/realtime_voice.py api-service/test_realtime_voice.py
+        run: python -m py_compile api-service/realtime_voice.py api-service/test_realtime_voice.py api-service/release_safety.py api-service/test_release_safety.py
       - name: Run mocked security and quota tests
-        run: python -m unittest discover -s api-service -p 'test_realtime_voice.py' -v
+        run: python -m unittest discover -s api-service -p 'test_*.py' -v
