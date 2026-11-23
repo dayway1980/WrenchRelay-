@@ -35,3 +35,17 @@
 .workflowConsent{margin:14px 0}
 .workflowCapture button:disabled,.workflowCapture textarea:disabled,.workflowCapture select:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:650px){.workflowHeader{flex-direction:column;padding:18px}.workflowQuestion,.workflowEntry,.workflowSteps,.workflowReview{padding:14px}.workflowActions button{flex:1}.workflowStep{grid-template-columns:22px minmax(0,1fr) 27px;gap:7px}.workflowQuestion p{font-size:16px}}
+
+/* Opt-in browser WebRTC speech interface; defaults hidden until server flag. */
+.realtimeVoice{padding:19px;background:linear-gradient(145deg,#11313a,#071d26);border:1px solid #42636f;border-radius:15px;display:grid;gap:10px}
+.realtimeVoice h3{margin:0;font-size:19px}
+.realtimeVoice>p{margin:0;line-height:1.5}
+.realtimeVoice>audio{max-width:100%;height:0}
+.realtimeVoice .workflowActions{margin:0}
+.realtimeVoice .workflowConsent{margin:4px 0}
+.workflowAssistant{padding:10px 12px;background:#163742;border-radius:8px;color:#dfedf1}
+.workflowCapturedVoice{border-top:1px solid #31535e;padding-top:12px;display:grid;gap:10px}
+.workflowCapturedVoice h4{margin:0;font-size:14px}
+.workflowTranscriptLine{display:grid;gap:6px;padding:10px;border:1px solid #365660;border-radius:9px}
+.workflowTranscriptLine p{margin:0;line-height:1.5;overflow-wrap:anywhere}
+.workflowTranscriptLine button{justify-self:start}
