@@ -66,13 +66,15 @@ function Auth({mode,config,onAuth,onBack}){
 }
 
 function App(){
+ const publicWorkflowDemo=window.location.pathname.replace(/\/$/, "")==="/try-workflow";
+ const [demoMode,setDemoMode]=useState("industrial"),[demoLanguage,setDemoLanguage]=useState("English"),[demoDraft,setDemoDraft]=useState("");
  const host=window.location.hostname.toLowerCase();
  const initial=host.startsWith('industrial.')?'industrial':host.startsWith('automotive.')?'automotive':localStorage.getItem('wr_mode')||'';
  const [mode,setMode]=useState(initial),[me,setMe]=useState(null),[sessionReady,setSessionReady]=useState(false),[config,setConfig]=useState({personalities:defaultPersonalities,google_enabled:false,stripe_enabled:false}),[legalType,setLegalType]=useState(()=>{const p=window.location.pathname.replace(/^\//,'');return ['terms','privacy','safety','billing'].includes(p)?p:''});
  const [tool,setTool]=useState('work-order'),[personality,setPersonality]=useState('straight-shooter'),[language,setLanguage]=useState('English'),[asset,setAsset]=useState(''),[notes,setNotes]=useState(''),[result,setResult]=useState(''),[busy,setBusy]=useState(false),[history,setHistory]=useState([]),[voiceOn,setVoiceOn]=useState(true),[listening,setListening]=useState(false),[message,setMessage]=useState('');
  const greeted=useRef(false);
  useEffect(()=>{request('/api/config').then(d=>setConfig({...d,personalities:d.personalities?.length?d.personalities:defaultPersonalities})).catch(()=>{})},[]);
- useEffect(()=>{request('/api/me').then(setMe).catch(()=>setMe(null)).finally(()=>setSessionReady(true))},[]);
+ useEffect(()=>{if(publicWorkflowDemo){setSessionReady(true);return;}request('/api/me').then(setMe).catch(()=>setMe(null)).finally(()=>setSessionReady(true))},[publicWorkflowDemo]);
  useEffect(()=>{if(!me)return;request('/api/work-orders').then(setHistory).catch(()=>{})},[me,result]);
  useEffect(()=>{if(!me||!voiceOn||greeted.current)return;greeted.current=true;const t=setTimeout(()=>speak(`Welcome to WrenchRelay ${mode==='automotive'?'Automotive':'Industrial'}. Tell me what happened, and choose whether you want a work order, troubleshooting plan, or handoff.`),700);return()=>clearTimeout(t)},[me,mode,voiceOn]);
  const choose=m=>{localStorage.setItem('wr_mode',m);setMode(m)};
@@ -85,6 +87,7 @@ function App(){
  const saveDraft=async()=>{if(!result)return;try{await request('/api/work-orders',{method:'POST',body:JSON.stringify({mode,narrative:result,data:{asset,complaint:notes}})});setMessage('Saved to WrenchRelay history.')}catch(e){setMessage(e.message)}};
  const checkout=async plan=>{try{const d=await request('/api/billing/checkout',{method:'POST',body:JSON.stringify({plan})});window.location.href=d.url}catch(e){setMessage(e.message)}};
  const portal=async()=>{try{const d=await request('/api/billing/portal',{method:'POST',});window.location.href=d.url}catch(e){setMessage(e.message)}};
+ if(publicWorkflowDemo)return <div className="app industrial"><header className="top appTop"><a className="brandbtn" href="/"><span>Wrench</span>Relay</a><span className="modePill">No-login workflow demonstration</span></header><main className="workspace" style={{display:"block",maxWidth:1100,margin:"auto"}}><section className="mainPanel"><span className="eyebrow">PRIVATE PREVIEW • NO ACCOUNT REQUIRED</span><h1>Try Repair Workflow Capture</h1><p className="muted">Use fictional equipment and test notes. This browser-only demo does not submit any information to WrenchRelay, create a real work order or connect to ChatGPT voice. Dictation may use your browser’s speech provider.</p><div className="workflowActions"><label>Workspace <select value={demoMode} onChange={e=>{setDemoMode(e.target.value);setDemoDraft("");}}><option value="industrial">Industrial</option><option value="automotive">Automotive</option></select></label><label>Language <select value={demoLanguage} onChange={e=>setDemoLanguage(e.target.value)}><option>English</option><option>Spanish</option></select></label></div><WorkflowCapture key={demoMode} mode={demoMode} asset="" language={demoLanguage} realtimeEnabled={false} onUseDraft={setDemoDraft}/>{demoDraft&&<div className="resultBox"><div className="resultBar"><b>Draft transferred into demo editor</b><span>Not saved or approved</span></div><pre>{demoDraft}</pre></div>}</section></main></div>;
  if(legalType)return <LegalPage type={legalType} onBack={closeLegal}/>;
  if(!mode)return <Choice choose={choose} goLegal={openLegal}/>;
  if(!sessionReady)return <div className="loadingScreen"><div className="brand"><span>Wrench</span>Relay</div><p>Starting secure session…</p></div>;
