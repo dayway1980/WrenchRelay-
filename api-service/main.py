@@ -1,4 +1,12 @@
 import os
+import sys
+from pathlib import Path
+
+# Also support test harnesses that load this entrypoint by absolute file path.
+API_MODULE_DIRECTORY = str(Path(__file__).resolve().parent)
+if API_MODULE_DIRECTORY not in sys.path:
+    sys.path.insert(0, API_MODULE_DIRECTORY)
+
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
