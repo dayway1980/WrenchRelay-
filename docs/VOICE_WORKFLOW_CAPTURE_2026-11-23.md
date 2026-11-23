@@ -38,3 +38,36 @@ Official architecture reference: https://developers.openai.com/api/docs/guides/r
 - GitHub Actions job `Voice workflow capture checks` runs `node --check web/src/workflowCapture.mjs` and `node --test web/src/workflowCapture.test.mjs`.
 - Build the preview and do an authenticated manual flow for **both** Industrial and Automotive: start/stop, typed fallback, permission denial, speech review, edit/remove, incomplete steps, Spanish prompts, export, move to work-order editor; verify no unapproved CMMS changes or sign-ups.
 - Do not merge/deploy this branch to live Railway until live source and DB preservation are verified. Keep billing commissioning PR #51 separate and draft.
+
+
+## Follow-on implementation — Realtime voice bridge (Nov 23, 2026)
+A further code-only milestone is now staged **on this same feature branch**:
+
+- `api-service/realtime_voice.py` adds `POST /api/realtime/client-secret`, using the existing authenticated `current_user` dependency, user document and MongoDB quota counter. No API key is sent to the frontend.
+- A valid browser Origin must match an explicit allowlist. Two server variables are required together: `WRENCHRELAY_REALTIME_ENABLED=true` AND `WRENCHRELAY_REALTIME_BUDGET_APPROVED=true`. Both default off. An `OPENAI_API_KEY` must be present on the **correct isolated** backend.
+- Each credential expires 60 seconds after creation and permits session creation while valid. Daily issuance is provisionally limited to two requests per account via an atomic DB update; provider failures refund the quota.
+- The GA Realtime session uses `gpt-realtime-2.1`, voice `marin`, server VAD, input transcription with `gpt-transcribe`, and **no model tools or CMMS writes**. The model must ask one question at a time and preserve unknown evidence.
+- `web/src/RealtimeVoice.js` implements an optional authenticated WebRTC client with an explicit audio consent checkbox, user-initiated microphone, a visible stop/mute control, no automatic microphone recording by WrenchRelay, local assistant transcript output and technician-review handoff. The browser stops its own connection after 180 seconds. Only editable captured text may be passed into the existing work-order flow by a user.
+- The `web/src/WorkflowCapture.js` interface only renders this component when `/api/config` explicitly advertises `realtime_voice_enabled`. Regular step capture remains available without the feature.
+
+**NO COST GUARANTEE:** short-lived secrets may be used for more than one session during their validity and a client timer can be bypassed. The two-token limit is NOT a provider-enforced duration or dollar cap. The API organization/project must have independently verified spending protections and server-side monitoring or session enforcement before approving the budget flag.
+
+**NO PRODUCTION COMMISSIONING YET:** The Railway application customers currently access uses an archived SQLite runtime, not this repository's MongoDB-based `api-service/main.py`. Additionally, the connected Vercel `wrench-relay` project exposes the **same sensitive DB variables to production and preview**. Do not point a preview test at the real customer database. A separate dummy-data database/project and an explicitly provisioned trial OpenAI project are prerequisites for real microphone/audio E2E testing. Never change the live DNS, existing accounts, Stripe, or the Railway backend to enable a speculative preview.
+
+### Verified automated checks
+`python -m unittest discover -s api-service -p 'test_realtime_voice.py' -v` checks:
+- closed flag, authentication and origin enforcement
+- safe test-only token issuance, no persistent-key disclosure, session model and tool-disable contract
+- atomic per-user token allowance
+- provider error handling and quota refund
+- invalid mode/language requests
+
+`node --test web/src/workflowCapture.test.mjs` checks the maintenance evidence model. GitHub Actions runs both. Vercel READY is a frontend build result, not a live audio E2E test.
+
+### Additional release checks required
+1. Restore production **SQLite** to an isolated test environment and verify existing customer login and work order contents remain intact. Do not use the Vercel shared production MongoDB for testing.
+2. Confirm which current backend serves the customer account entry point and where `/api/config` requests route.
+3. Establish a safe, monitored standalone Realtime backend that can authenticate customer sessions **against the actual production auth system without copying credentials or leaking customer data**. The current MongoDB-based bridge is a reference implementation, not proof of Railway compatibility.
+4. Use an OpenAI test key/project with explicit dollar alerts/limits and secure secrets; no billable tests until the user authorizes charges and billing.
+5. Manual mobile/desktop permission denial, spoken interruption, 180-second expiry, termination, mute, account isolation, transcription accuracy, English/Spanish terminology, and person-to-person takeover.
+6. Validate consent wording and privacy retention; only with explicit approval perform a staged canary release and rollback.
