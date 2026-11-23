@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import RealtimeVoice from "./RealtimeVoice";
 import { WORKFLOW_FIELDS, buildWorkflowDraft, cleanWorkflowSteps, missingWorkflowFields, nextWorkflowPrompt } from "./workflowCapture.mjs";
 
 /**
@@ -8,7 +9,7 @@ import { WORKFLOW_FIELDS, buildWorkflowDraft, cleanWorkflowSteps, missingWorkflo
  * the microphone. This is not a screen recorder, a continuous microphone, or
  * an OpenAI Realtime voice connection. Nothing is published or sent to CMMS.
  */
-export default function WorkflowCapture({ mode, asset, language, onUseDraft }) {
+export default function WorkflowCapture({ mode, asset, language, onUseDraft, realtimeEnabled = false }) {
   const [capturing, setCapturing] = useState(false);
   const [entries, setEntries] = useState([]);
   const [kind, setKind] = useState("symptom");
@@ -155,6 +156,13 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft }) {
       <p className="workflowDisclosure">{spanish
         ? "Sin grabación de pantalla, micrófono continuo ni publicación automática. El dictado puede usar el servicio de voz del navegador. No introduzca secretos ni datos sin autorización."
         : "No screen recording, background microphone, or automatic publication. Speech recognition may use your browser's speech service. Do not dictate passwords or unauthorized customer or plant data."}</p>
+
+      {realtimeEnabled && <RealtimeVoice mode={mode} language={language} onTranscript={(heard) => {
+        setText((previous) => [previous.trim(), heard.trim()].filter(Boolean).join(" ").slice(0, 1600));
+        setSource("voice");
+        setReviewed(false);
+        setStatus("Realtime transcript inserted as an editable draft. Verify it before adding an evidence step.");
+      }} />}
 
       <div className="workflowQuestion" aria-live="polite">
         <strong>{spanish ? "Siguiente pregunta" : "Relay's next question"}</strong>
