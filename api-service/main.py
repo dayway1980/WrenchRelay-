@@ -40,7 +40,9 @@ JWT_ALG = "HS256"
 PREVIEW_SAFETY_HOLD = unisolated_preview()
 # Vercel previews share database/API secrets with production: fail closed until an
 # isolated sandbox backend has been separately provisioned and reviewed.
-MONGO_URL = None if PREVIEW_SAFETY_HOLD else (os.getenv("MONGO_URL") or os.getenv("MONGODB_URI"))
+MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URI")
+if PREVIEW_SAFETY_HOLD:
+    MONGO_URL = None  # No customer DB connection from an unisolated preview.
 DB_NAME = (os.getenv("DB_NAME") or "").strip() or "wrenchrelay"
 OPENAI_API_KEY = "" if PREVIEW_SAFETY_HOLD else os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL") or None
