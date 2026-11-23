@@ -91,7 +91,7 @@ class RealtimeGateTests(unittest.TestCase):
 
     def test_short_lived_secret_and_daily_limit(self):
         db = MemoryDb()
-        fake = httpx.Response(200, json={"value": "ek_example_short_lived", "expires_at": 123456})
+        fake = httpx.Response(200, json={"value": "ek_example_short_lived", "expires_at": 123456}, request=httpx.Request("POST", "https://api.openai.com/v1/realtime/client_secrets"))
         with patch.dict(os.environ, FLAGS), patch("realtime_voice.httpx.post", return_value=fake) as upstream:
             client = test_client(db)
             first = client.post(PATH, json=INPUT, headers=ORIGIN)
