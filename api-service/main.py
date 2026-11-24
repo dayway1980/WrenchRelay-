@@ -74,6 +74,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Isolated Railway QA is inaccessible without a separate access secret. This
+# does not authenticate customers; it prevents exposing the sandbox API at all.
+# Fail closed if QA was enabled without a corresponding secret.
+import hmac
+from fastapi.responses import JSONResponse
+WR_ISOLATED_QA = os.getenv("WR_ISOLATED_QA", "").lower() == "true"
+WR_QA_ACCESS_TOKEN = os.getenv("WR_QA_ACCESS_TOKEN", "")
+
+@app.middleware("http")
+async def private_qa_boundary(request: Request, call_next):
+    if WR_ISOLATED_QA and request.url.path not in (
+        "/api/health", "/api/health/live", "/api/health/ready"
+    ):
+        presented = request.headers.get("X-WR-QA-Access", "")
+        if not WR_QA_ACCESS_TOKEN or not hmac.compare_digest(presented, WR_QA_ACCESS_TOKEN):
+            return JSONResponse(
+                status_code=403, content={"detail": "Private QA environment. Not a public customer service."}
+            )
+    return await call_next(request)
+
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=3000) if MONGO_URL else None
 _db = _client[DB_NAME] if _client else None
