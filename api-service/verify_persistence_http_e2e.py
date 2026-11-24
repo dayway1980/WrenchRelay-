@@ -98,8 +98,8 @@ def main():
             checked(owner.get("/api/work-orders").status_code == 401,
                     "anonymous saved-work-order read rejected")
             checked(owner.get("/api/me").status_code == 401, "anonymous identity rejected")
-            checked(owner.post("/api/realtime/client-secret", json={"mode":"industrial", "language":"English"}, headers={"Origin": BASE}).status_code == 401,
-                    "anonymous Realtime key request rejected before provider access")
+            checked(owner.post("/api/realtime/client-secret", json={"mode":"industrial", "language":"English"}, headers={"Origin": BASE}).status_code == 503,
+                    "anonymous Realtime blocked by private QA provider hold")
             a = owner.post("/api/auth/register", json={
                 "email": "qa-owner@example.com",
                 "name": "CI Owner Test",
