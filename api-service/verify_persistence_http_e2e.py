@@ -99,7 +99,7 @@ def main():
                 "name": "CI Owner Test",
                 "password": "Qa-Only-Strong-Password-2246!",
             })
-            checked(a.status_code == 200, f"fictional owner registered without checkout (HTTP {a.status_code}: {a.text[:180]})")
+            checked(a.status_code == 200, f"fictional owner registered without checkout (HTTP {a.status_code})")
             if a.status_code == 200:
                 owner.headers["Authorization"] = "Bearer " + a.json()["token"]
             checked(owner.get("/api/me").json().get("email") == "qa-owner@example.com",
@@ -132,7 +132,7 @@ def main():
                 "name": "CI Other Tenant",
                 "password": "Qa-Other-Strong-Password-2246!",
             })
-            checked(second.status_code == 200, f"second fictional tenant registered (HTTP {second.status_code}: {second.text[:180]})")
+            checked(second.status_code == 200, f"second fictional tenant registered (HTTP {second.status_code})")
             if second.status_code == 200:
                 other.headers["Authorization"] = "Bearer " + second.json()["token"]
             list_other = other.get("/api/work-orders")
@@ -151,7 +151,7 @@ def main():
                 "email": "qa-owner@example.com",
                 "password": "Qa-Only-Strong-Password-2246!",
             })
-            checked(login.status_code == 200, f"fictional owner logs in after process restart (HTTP {login.status_code}: {login.text[:180]})")
+            checked(login.status_code == 200, f"fictional owner logs in after process restart (HTTP {login.status_code})")
             if login.status_code == 200:
                 logged_back_in.headers["Authorization"] = "Bearer " + login.json()["token"]
             resp = logged_back_in.get("/api/work-orders")
