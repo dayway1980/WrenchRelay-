@@ -1,0 +1,13 @@
+# Dedicated PRIVATE WrenchRelay voice QA backend.
+# Does NOT replace the customer-facing Dockerfile / production SQLite runtime.
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /srv/voiceqa
+COPY api-service/requirements.txt ./requirements.txt
+RUN python -m pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
+COPY api-service/ ./
+RUN python -m py_compile main.py realtime_voice.py release_safety.py
+RUN useradd -r -u 10001 -g nogroup voiceqa && chown -R voiceqa:nogroup /srv/voiceqa
+USER voiceqa
+EXPOSE 8080
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
