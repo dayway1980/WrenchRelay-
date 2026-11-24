@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/voice-workflow-capture-20261123
+      - fix/private-voice-qa-commissioning-20261124
   pull_request:
     paths:
       - 'web/src/**'
