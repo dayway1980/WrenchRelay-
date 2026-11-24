@@ -66,7 +66,7 @@ function Auth({mode,config,onAuth,onBack}){
 }
 
 function App(){
- const publicWorkflowDemo=window.location.pathname.replace(/\/$/, "")==="/try-workflow";
+ const publicWorkflowDemo=process.env.REACT_APP_PUBLIC_DEMO_ONLY==="true" || window.location.pathname.replace(/\/$/, "")==="/try-workflow";
  const [demoMode,setDemoMode]=useState("industrial"),[demoLanguage,setDemoLanguage]=useState("English"),[demoDraft,setDemoDraft]=useState("");
  const host=window.location.hostname.toLowerCase();
  const initial=host.startsWith('industrial.')?'industrial':host.startsWith('automotive.')?'automotive':localStorage.getItem('wr_mode')||'';
