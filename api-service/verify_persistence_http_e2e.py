@@ -94,6 +94,8 @@ def main():
             checked(owner.get("/api/work-orders").status_code == 401,
                     "anonymous saved-work-order read rejected")
             checked(owner.get("/api/me").status_code == 401, "anonymous identity rejected")
+            checked(owner.post("/api/realtime/client-secret", json={"mode":"industrial", "language":"English"}, headers={"Origin": BASE}).status_code == 401,
+                    "anonymous Realtime key request rejected before provider access")
             a = owner.post("/api/auth/register", json={
                 "email": "qa-owner@example.com",
                 "name": "CI Owner Test",
@@ -104,6 +106,10 @@ def main():
                 owner.headers["Authorization"] = "Bearer " + a.json()["token"]
             checked(owner.get("/api/me").json().get("email") == "qa-owner@example.com",
                     "signed-in owner session validated")
+            checked(owner.get("/api/config").json().get("realtime_voice_enabled") is False,
+                    "no-cost Realtime remains disabled by default")
+            checked(owner.post("/api/realtime/client-secret", json={"mode":"industrial", "language":"English"}, headers={"Origin": BASE}).status_code == 503,
+                    "authenticated voice request fails closed when flags are off")
             record = {
                 "mode": "industrial",
                 "narrative": "QA TEST ONLY: observations unverified; no repairs performed.",
