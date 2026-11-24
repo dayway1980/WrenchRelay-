@@ -92,6 +92,14 @@ async def private_qa_boundary(request: Request, call_next):
             return JSONResponse(
                 status_code=403, content={"detail": "Private QA environment. Not a public customer service."}
             )
+        # The preview verifies account and data persistence only. Never call
+        # paid AI/telephony/billing providers from an isolated QA deployment.
+        if request.url.path.startswith((
+            "/api/ai/", "/api/billing/", "/api/stripe/", "/api/realtime/"
+        )):
+            return JSONResponse(
+                status_code=503, content={"detail": "External services disabled in private QA."}
+            )
     return await call_next(request)
 
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
