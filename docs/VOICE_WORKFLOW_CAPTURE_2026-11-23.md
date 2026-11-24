@@ -71,3 +71,25 @@ A further code-only milestone is now staged **on this same feature branch**:
 4. Use an OpenAI test key/project with explicit dollar alerts/limits and secure secrets; no billable tests until the user authorizes charges and billing.
 5. Manual mobile/desktop permission denial, spoken interruption, 180-second expiry, termination, mute, account isolation, transcription accuracy, English/Spanish terminology, and person-to-person takeover.
 6. Validate consent wording and privacy retention; only with explicit approval perform a staged canary release and rollback.
+
+
+## Public isolated sandbox unblocked — November 23, 2026
+
+**Working customer-accessible demonstration (no signup):**
+https://wrenchrelay-access-probe.vercel.app/try-workflow
+
+- Deployed from this feature branch to existing Vercel project `wrenchrelay-access-probe` (`prj_VWLJryohpmZD6hxMRoSugddPRvjn`), without creating a new project.
+- Its Vercel environment had **zero** variables before deployment. The only added variable is `REACT_APP_PUBLIC_DEMO_ONLY=true`, scoped to this project's production target, which forces the React interface into the offline, browser-only demonstration on all routes.
+- Live HTTP extraction independently confirmed the workflow screen renders without Vercel sign-in, includes Industrial/Automotive selector, evidence sections, export/review features and prominent disclaimers. `/login` also renders the demo rather than customer login. This is only an accessibility/render check; interactive microphone permissions and actual edits have **not** been end-to-end browser-tested.
+- Vercel deployment `dpl_6dKGBzbVAV29qEPiuANwu3jH7NCT` was **READY**, with the alias `wrenchrelay-access-probe.vercel.app`. No production app custom domains, live Railway services, CNAME, Stripe account or user records changed.
+- All four GitHub checks for commit `60781592a2e00f994f086f4c899a3bf1939de92a` passed: voice workflow checks, candidate API config, synthetic auth/billing, and the repeated voice check. This is not proof of an OpenAI-powered live call.
+- The demo's voice input uses explicit opt-in browser speech recognition if available. Real AI Realtime remains hidden/disabled on this sandbox. Never describe it as a live AI telephone call or a fully commissioned user app.
+
+**Remaining real Realtime blockers:**
+- Vercel's connected account has permission to deploy into the existing isolated project but was denied permission (403) to create a new project. Its AI Gateway budget READ call was denied (403), so account budget setup and verification remain incomplete. Do not claim a spend cap exists.
+- Started the user-facing OpenAI Platform secure API key setup for a dedicated `WrenchRelay Voice Sandbox` key; no new permanent key was read or installed by the assistant. The API Platform now supports project hard spend caps, but the project owner must verify and enable **Enforce a hard limit** separately before real billable calls.
+- Current code relies on direct OpenAI Realtime, so a Vercel AI Gateway limit would not protect those calls unless the integration is explicitly migrated to the gateway and tested.
+- The existing Railway customer runtime uses SQLite and a sealed source archive, and the separate legacy voice candidate has its own unknown authentication/data coupling; neither was overwritten.
+- Real OpenAI microphone-to-voice conversation, authenticated customer session equivalence, project-specific cost accounting and cancellation are **NOT TESTED / NOT COMMISSIONED**.
+
+**Smallest remaining reversible action:** Finish owner-side creation of a dedicated restricted OpenAI project/key with a low hard spend limit; provide the key ONLY through Vercel/Railway secret configuration (never in chat). After independently verifying the project budget and test-only auth, test one short real voice session in isolated staging, inspect cost and logs, and stop before any customer-domain cutover.
