@@ -95,12 +95,14 @@ def main():
                     "anonymous saved-work-order read rejected")
             checked(owner.get("/api/me").status_code == 401, "anonymous identity rejected")
             a = owner.post("/api/auth/register", json={
-                "email": "qa-owner@wrenchrelay.invalid",
+                "email": "qa-owner@example.com",
                 "name": "CI Owner Test",
                 "password": "Qa-Only-Strong-Password-2246!",
             })
-            checked(a.status_code == 200, "fictional owner registered without checkout")
-            checked(owner.get("/api/me").json().get("email") == "qa-owner@wrenchrelay.invalid",
+            checked(a.status_code == 200, f"fictional owner registered without checkout (HTTP {a.status_code}: {a.text[:180]})")
+            if a.status_code == 200:
+                owner.headers["Authorization"] = "Bearer " + a.json()["token"]
+            checked(owner.get("/api/me").json().get("email") == "qa-owner@example.com",
                     "signed-in owner session validated")
             record = {
                 "mode": "industrial",
@@ -126,15 +128,18 @@ def main():
             checked(r.status_code == 200 and any(x["id"] == saved["id"] for x in r.json()),
                     "owner retrieves saved order before restart")
             second = other.post("/api/auth/register", json={
-                "email": "qa-other@wrenchrelay.invalid",
+                "email": "qa-other@example.com",
                 "name": "CI Other Tenant",
                 "password": "Qa-Other-Strong-Password-2246!",
             })
-            checked(second.status_code == 200, "second fictional tenant registered")
+            checked(second.status_code == 200, f"second fictional tenant registered (HTTP {second.status_code}: {second.text[:180]})")
+            if second.status_code == 200:
+                other.headers["Authorization"] = "Bearer " + second.json()["token"]
             list_other = other.get("/api/work-orders")
             checked(list_other.status_code == 200 and list_other.json() == [],
                     "other tenant cannot read owner's saved work order")
             checked(owner.post("/api/auth/logout").status_code == 200, "owner logged out")
+            owner.headers.pop("Authorization", None)  # Bearer tokens are independent of logout cookies
             checked(owner.get("/api/work-orders").status_code == 401,
                     "owner read rejected after logout")
         terminate(proc)
@@ -143,10 +148,12 @@ def main():
         proc = start_api()
         with httpx.Client(base_url=BASE, timeout=12) as logged_back_in:
             login = logged_back_in.post("/api/auth/login", json={
-                "email": "qa-owner@wrenchrelay.invalid",
+                "email": "qa-owner@example.com",
                 "password": "Qa-Only-Strong-Password-2246!",
             })
-            checked(login.status_code == 200, "fictional owner logs in after process restart")
+            checked(login.status_code == 200, f"fictional owner logs in after process restart (HTTP {login.status_code}: {login.text[:180]})")
+            if login.status_code == 200:
+                logged_back_in.headers["Authorization"] = "Bearer " + login.json()["token"]
             resp = logged_back_in.get("/api/work-orders")
             checked(resp.status_code == 200, "saved orders list after restart returns 200")
             matches = [x for x in resp.json() if x.get("id") == saved["id"]]
