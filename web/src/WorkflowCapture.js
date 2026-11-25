@@ -36,13 +36,11 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft, rea
 
   useEffect(() => () => {
     haltMic();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
   }, []);
 
   useEffect(() => {
     haltMic();
     setCapturing(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- stop in-flight dictation when the workspace mode changes
   }, [mode]);
 
   const say = (message) => {
