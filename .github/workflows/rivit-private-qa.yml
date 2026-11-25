@@ -1,0 +1,46 @@
+name: Rivit private QA image and boundary
+
+on:
+  pull_request:
+    paths:
+      - 'api-service/main.py'
+      - 'Dockerfile.rivit-qa'
+      - 'railway.json'
+      - 'tests/test_private_rivit_boundary.py'
+      - '.github/workflows/rivit-private-qa.yml'
+  push:
+    branches:
+      - qa/rivit-signed-webhook-candidate-20261124
+
+permissions:
+  contents: read
+
+jobs:
+  private-qa-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MONGO_URL: ""
+      MONGODB_URI: ""
+      OPENAI_API_KEY: ""
+      STRIPE_SECRET_KEY: ""
+      STRIPE_SECRET_KEY_LIVE: ""
+      GOOGLE_CLIENT_ID: ""
+      WR_ISOLATED_QA: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install tested API requirements
+        run: python -m pip install --disable-pip-version-check -r api-service/requirements.txt
+      - name: Verify fail-closed private QA middleware
+        run: python -m unittest discover -s tests -p 'test_private_rivit_boundary.py' -v
+
+  qa-docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build exact Railway QA image
+        run: docker build --file Dockerfile.rivit-qa --tag rivit-private-qa:ci .
