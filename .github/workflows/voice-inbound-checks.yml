@@ -1,0 +1,62 @@
+name: Rivit inbound voice checks
+
+on:
+  pull_request:
+    paths:
+      - 'api-service/twilio_voice.py'
+      - 'api-service/test_twilio_voice.py'
+      - 'api-service/verify_voice_inbound_http_e2e.py'
+      - 'api-service/main.py'
+      - 'api-service/requirements.txt'
+      - '.github/workflows/voice-inbound-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-signature-and-intake-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            'fastapi==0.115.8' 'httpx==0.28.1' 'pymongo==4.11.1' 'python-multipart==0.0.20'
+      - name: Compile the voice gateway
+        run: python -m py_compile api-service/twilio_voice.py api-service/test_twilio_voice.py
+      - name: Signature, tenant routing, replay and intake tests
+        run: python -m unittest discover -s api-service -p 'test_twilio_voice.py' -v
+
+  simulated-inbound-call-real-mongo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      WR_QA_ALLOW_LOCAL_MONGO: "1"
+      WR_QA_MONGO_URL: mongodb://127.0.0.1:27017
+      OPENAI_API_KEY: ""
+      STRIPE_SECRET_KEY: ""
+      STRIPE_SECRET_KEY_LIVE: ""
+      GOOGLE_CLIENT_ID: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact API requirements
+        run: python -m pip install --disable-pip-version-check -r api-service/requirements.txt
+      - name: Simulated inbound call, replay, tenant isolation and restart persistence
+        run: python api-service/verify_voice_inbound_http_e2e.py
