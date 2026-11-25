@@ -61,6 +61,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Private Railway-only commissioning boundary. This overlay branch is NOT
+# a customer production entrypoint. No operator credentials reach the browser.
+import hmac
+from fastapi.responses import JSONResponse
+
+_QA_SAFE_PATHS = {
+    "/api/config",
+    "/api/me",
+    "/api/auth/register",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/work-orders",
+    "/api/voice/health",
+    "/api/voice/incoming",
+    "/api/voice/status",
+    "/api/voice/intake",
+    "/api/voice/intakes",
+    "/api/voice/calls",
+}
+
+@app.middleware("http")
+async def _private_rivit_qa_boundary(request: Request, call_next):
+    if os.getenv("WR_ISOLATED_QA", "").strip().lower() != "true":
+        return await call_next(request)
+
+    path = request.url.path
+    if path in ("/api/health", "/api/health/live", "/api/health/ready"):
+        return await call_next(request)
+
+    presented = request.headers.get("X-WR-QA-Access", "")
+    qa_secret = os.getenv("WR_QA_ACCESS_TOKEN", "")
+    authorized = bool(qa_secret) and hmac.compare_digest(presented, qa_secret)
+    if not authorized:
+        # Twilio cannot send an operator QA header. These two endpoints are
+        # reachable only when explicitly enabled AND a webhook signing secret
+        # exists; the router independently verifies X-Twilio-Signature.
+        signed_webhook = (
+            request.method == "POST"
+            and path in ("/api/voice/incoming", "/api/voice/status")
+            and os.getenv("WRENCHRELAY_VOICE_INBOUND_ENABLED", "").lower() == "true"
+            and bool(os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+                     or os.getenv("TWILIO_WEBHOOK_SHARED_KEY", "").strip())
+        )
+        if not signed_webhook:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Private WrenchRelay QA environment"},
+            )
+
+    if path not in _QA_SAFE_PATHS:
+        # Includes AI, Realtime credential issuance, Stripe and any new API.
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Endpoint disabled in private QA"},
+        )
+    return await call_next(request)
+
+
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=3000) if MONGO_URL else None
 _db = _client[DB_NAME] if _client else None
