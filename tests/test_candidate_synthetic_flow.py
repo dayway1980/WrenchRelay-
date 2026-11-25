@@ -19,6 +19,8 @@ import mongomock
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "api-service" / "main.py"
+# Dynamic import of the entrypoint still needs its sibling voice module on sys.path.
+sys.path.insert(0, str(SOURCE.parent))
 
 # Fail closed at import: never attach a live database or use real payment secrets.
 for name in (

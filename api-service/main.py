@@ -10,6 +10,8 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pymongo import MongoClient
 from openai import OpenAI
+from rivit_media_bridge import create_voice_stream_router
+from twilio_voice import create_voice_inbound_router
 
 try:
     import stripe
@@ -320,9 +322,20 @@ def config():
         "stripe_enabled": bool((os.getenv("STRIPE_SECRET_KEY_LIVE") or os.getenv("STRIPE_SECRET_KEY")) and stripe),
         "legal_entity": LEGAL_ENTITY_NAME,
         "legal_email": LEGAL_EMAIL,
+        "voice_inbound_enabled": (
+            os.getenv("WRENCHRELAY_VOICE_INBOUND_ENABLED", "").strip().lower() == "true"
+        ),
         "personalities": [{"id": k, "name": k.replace("-", " ").title(), "description": v} for k, v in PERSONALITIES.items()],
         "brava_domain": BRAVA_DOMAIN,
     }
+
+
+# Inbound Twilio voice for Rivit: signature-verified, tenant-routed, disabled by default.
+app.include_router(create_voice_inbound_router(
+    require_db, current_user, os.getenv("ADMIN_EMAIL", "").strip().lower()
+))
+# Media Streams -> OpenAI Realtime bridge, behind the live flag, a per-call token and an OpenAI key.
+app.include_router(create_voice_stream_router(require_db))
 
 
 @app.post("/api/auth/register")

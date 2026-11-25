@@ -9,3 +9,5 @@ openai==1.63.2
 stripe==11.5.0
 google-auth==2.38.0
 httpx==0.28.1
+websockets==17.4
+python-multipart==0.0.20
