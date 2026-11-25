@@ -9,6 +9,7 @@ the bridge must never decode them, so their content is irrelevant.
 import json
 import os
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -19,10 +20,12 @@ from starlette.websockets import WebSocketDisconnect
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rivit_media_bridge import (  # noqa: E402
+    DEFAULT_MAX_CALL_SECONDS,
     INTAKE_TOOL,
     BridgeSession,
     build_instructions,
     create_voice_stream_router,
+    max_call_seconds,
     parse_intake_call,
     session_update,
 )
@@ -216,7 +219,7 @@ class SessionConfigTests(unittest.TestCase):
         self.assertTrue(INTAKE_TOOL["parameters"]["additionalProperties"] is False)
 
     def test_audio_is_relayed_in_both_directions_without_touching_payloads(self):
-        session = BridgeSession(TENANTS["+15555550100"], STREAM_SID)
+        session = BridgeSession(STREAM_SID)
         self.assertEqual(
             session.from_twilio({"event": "media", "media": {"track": "inbound", "payload": "AAECAwQ="}}),
             [{"type": "input_audio_buffer.append", "audio": "AAECAwQ="}],
@@ -233,7 +236,7 @@ class SessionConfigTests(unittest.TestCase):
         self.assertEqual(session.from_realtime({"type": "response.done"}), [])
 
     def test_malformed_or_unsupported_frames_are_ignored(self):
-        session = BridgeSession(TENANTS["+15555550100"], STREAM_SID)
+        session = BridgeSession(STREAM_SID)
         for event in ({}, {"event": "media"}, {"event": "mark"}, {"event": "media", "media": {"track": "inbound"}},
                       {"type": "session.updated"}, {"type": None}):
             self.assertEqual(session.from_twilio(event), [])
@@ -344,6 +347,39 @@ class StreamFlowTests(unittest.TestCase):
                     websocket.send_json({"event": "stop"})
         self.assertEqual([frame for frame in fake.sent if frame["type"] == "input_audio_buffer.append"], [])
         self.assertEqual(db.voice_calls.find_one({"call_sid": CALL_SID})["media_stream"], "ended")
+
+
+class CallLimitTests(unittest.TestCase):
+    def test_call_limit_falls_back_to_the_default_for_junk(self):
+        for value in ("", "abc", "0", "-5", "nan", "inf"):
+            with patch.dict(os.environ, {"WRENCHRELAY_VOICE_MAX_CALL_SECONDS": value}):
+                self.assertEqual(max_call_seconds(), float(DEFAULT_MAX_CALL_SECONDS))
+        with patch.dict(os.environ, {"WRENCHRELAY_VOICE_MAX_CALL_SECONDS": "90"}):
+            self.assertEqual(max_call_seconds(), 90.0)
+
+    def test_stream_is_cut_off_when_the_call_limit_elapses(self):
+        app, fake, db = build()
+        env = dict(ENV, WRENCHRELAY_VOICE_MAX_CALL_SECONDS="0.2")
+        with patch.dict(os.environ, env):
+            with TestClient(app) as client:
+                with client.websocket_connect(stream_url()) as websocket:
+                    websocket.send_json(START)
+                    codes = []
+
+                    def read_until_closed():
+                        try:
+                            websocket.receive_json()
+                        except WebSocketDisconnect as exc:
+                            codes.append(exc.code)
+
+                    reader = threading.Thread(target=read_until_closed, daemon=True)
+                    reader.start()
+                    reader.join(10)
+                    self.assertFalse(reader.is_alive(), "the bridge left the stream open past its call limit")
+                    self.assertEqual(codes, [1000])
+        self.assertEqual(db.voice_calls.find_one({"call_sid": CALL_SID})["media_stream"], "max_duration")
+        self.assertTrue(fake.closed)
+        self.assertEqual(fake.sent[0]["type"], "session.update")
 
 
 class TokenTests(unittest.TestCase):

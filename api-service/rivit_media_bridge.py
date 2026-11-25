@@ -8,7 +8,9 @@ the socket; there is no unauthenticated or "log it and continue" path.
 
 Audio is relayed, never stored or transcoded. Twilio sends 8 kHz G.711 mu-law as
 base64 and the Realtime session is configured for ``audio/pcmu``, so each payload
-travels unchanged in both directions. The only thing written to the database is
+travels unchanged in both directions. A call is also hard-capped in duration
+(``WRENCHRELAY_VOICE_MAX_CALL_SECONDS``), so a stream that never gets a ``stop``
+cannot keep billing indefinitely. The only thing written to the database is
 the structured intake the caller actually supplied through the model's
 ``record_intake`` tool call, validated by the same rules the HTTP intake endpoint
 uses. No transcript, no recording, no outbound call, no number purchase.
@@ -19,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 from urllib.parse import quote
 
@@ -32,6 +35,7 @@ REALTIME_BASE = "wss://api.openai.com/v1/realtime"
 DEFAULT_MODEL = "gpt-realtime"
 DEFAULT_VOICE = "marin"
 START_TIMEOUT_SECONDS = 15
+DEFAULT_MAX_CALL_SECONDS = 600
 
 # The model may only hand back fields the caller actually spoke. validate_intake
 # enforces the same allow-list and refuses price/quote/hours/appointment keys.
@@ -79,8 +83,14 @@ def realtime_endpoint() -> str:
     return f"{REALTIME_BASE}?model={quote(realtime_model())}"
 
 
-def openai_configured() -> bool:
-    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+def max_call_seconds() -> float:
+    """Ceiling on one live call. Junk, zero, negative or infinite falls back to the default."""
+    raw = os.getenv("WRENCHRELAY_VOICE_MAX_CALL_SECONDS", "").strip()
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return float(DEFAULT_MAX_CALL_SECONDS)
+    return seconds if math.isfinite(seconds) and seconds > 0 else float(DEFAULT_MAX_CALL_SECONDS)
 
 
 def build_instructions(tenant: dict) -> str:
@@ -138,12 +148,8 @@ def session_update(tenant: dict) -> dict:
 class BridgeSession:
     """Frame translator. Pure: no sockets, no clock, no database, no audio decoding."""
 
-    def __init__(self, tenant: dict, stream_sid: str):
-        self.tenant = tenant
+    def __init__(self, stream_sid: str):
         self.stream_sid = stream_sid
-
-    def session_update(self) -> dict:
-        return session_update(self.tenant)
 
     def from_twilio(self, event: dict) -> list[dict]:
         media = event.get("media") or {}
@@ -220,23 +226,16 @@ async def record_tool_call(event: dict, db, tenant: dict, call_sid: str) -> list
 
 async def connect_realtime_api(url: str, api_key: str):
     """Open the Realtime socket with the server-side credential header."""
-    try:
-        from websockets.asyncio.client import connect
-    except ImportError:  # pragma: no cover - websockets < 13
-        from websockets.legacy.client import connect
-    headers = {"Authorization": f"Bearer {api_key}"}
-    options = {"max_size": 4 * 2**20, "ping_interval": 20, "close_timeout": 5, "open_timeout": 10}
-    try:
-        return await connect(url, additional_headers=headers, **options)
-    except TypeError:  # pragma: no cover - websockets < 13
-        return await connect(url, extra_headers=headers, **options)
+    from websockets.asyncio.client import connect
 
-
-async def _close(upstream) -> None:
-    try:
-        await upstream.close()
-    except Exception:
-        pass
+    return await connect(
+        url,
+        additional_headers={"Authorization": f"Bearer {api_key}"},
+        max_size=4 * 2**20,
+        ping_interval=20,
+        close_timeout=5,
+        open_timeout=10,
+    )
 
 
 def _mark(db, call_sid: str, state: str) -> None:
@@ -328,7 +327,17 @@ def create_voice_stream_router(require_db, connect_realtime=None) -> APIRouter:
             log.warning("voice stream upstream connect failed: %s", type(exc).__name__)
             return await refuse(websocket, "voice assistant unavailable")
 
-        session = BridgeSession(tenant, stream_sid)
+        session = BridgeSession(stream_sid)
+        limit = max_call_seconds()
+        ended_by = "ended"
+
+        async def call_deadline(seconds: float) -> None:
+            # Twilio ends the call when its media socket closes, so this is the
+            # ceiling on what a single call can spend on the Realtime model.
+            nonlocal ended_by
+            await asyncio.sleep(seconds)
+            ended_by = "max_duration"
+            log.warning("call %s ended at the %gs media bridge call limit", call_sid, seconds)
 
         async def twilio_to_realtime() -> None:
             while True:
@@ -355,16 +364,22 @@ def create_voice_stream_router(require_db, connect_realtime=None) -> APIRouter:
                     await websocket.send_json(frame)
 
         try:
-            await upstream.send(json.dumps(session.session_update()))
-            tasks = [asyncio.create_task(twilio_to_realtime()),
-                     asyncio.create_task(realtime_to_twilio())]
+            await upstream.send(json.dumps(session_update(tenant)))
+            tasks = [
+                asyncio.create_task(twilio_to_realtime()),
+                asyncio.create_task(realtime_to_twilio()),
+                asyncio.create_task(call_deadline(limit)),
+            ]
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
             await asyncio.gather(*done, *pending, return_exceptions=True)
         finally:
-            await _close(upstream)
-            _mark(db, call_sid, "ended")
+            try:
+                await upstream.close()
+            except Exception:
+                pass
+            _mark(db, call_sid, ended_by)
             try:
                 await websocket.close()
             except RuntimeError:

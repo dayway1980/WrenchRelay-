@@ -67,6 +67,12 @@ Guarantees enforced in code:
 10. **Audio is relayed, not stored.** Payloads pass through untouched in both
     directions; the only data written is the structured intake the caller
     supplied.
+11. **A call cannot run forever.** The bridge closes the media stream after
+    `WRENCHRELAY_VOICE_MAX_CALL_SECONDS` (default 600) even if Twilio never sends
+    `stop`, which ends the call. The call record is marked
+    `media_stream: "max_duration"` instead of `"ended"`, so a cut-off call is
+    distinguishable from a caller hanging up. One model reply is separately
+    capped at 400 output tokens.
 
 ## Media bridge behaviour
 
@@ -79,6 +85,10 @@ Twilio sends 8 kHz G.711 mu-law as base64. The Realtime session is configured fo
 | Model -> caller | `media` on the call's `streamSid` | `response.output_audio.delta` |
 | Barge-in | `clear` on the call's `streamSid` | `input_audio_buffer.speech_started` |
 | Intake | `conversation.item.create` (`function_call_output`) + `response.create` | `response.function_call_arguments.done` |
+
+The bridge stops a call for two reasons: the caller hangs up (`stop`) or
+`WRENCHRELAY_VOICE_MAX_CALL_SECONDS` elapses. Both close the media socket and the
+upstream Realtime session. There is no third path that leaves a paid session open.
 
 The model is told the caller already heard the greeting, to ask one question at a
 time, and to refuse hours, prices, availability, diagnosis and appointments. Its
@@ -112,6 +122,11 @@ WRENCHRELAY_VOICE_BRIDGE_KEY=
 # Realtime model settings. Defaults: gpt-realtime / marin.
 WRENCHRELAY_VOICE_MODEL=
 WRENCHRELAY_VOICE_NAME=
+
+# Hard ceiling on one live call, in seconds (default 600). When it elapses the
+# bridge closes the media stream, which ends the call. Junk, zero or negative
+# values fall back to 600 rather than leaving the call uncapped.
+WRENCHRELAY_VOICE_MAX_CALL_SECONDS=
 
 # Server-side credential for the media bridge. Never sent to a browser.
 OPENAI_API_KEY=
