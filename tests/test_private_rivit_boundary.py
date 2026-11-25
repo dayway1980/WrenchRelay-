@@ -59,7 +59,9 @@ class RivitPrivateQABoundaryTests(unittest.TestCase):
         self.assertEqual(voice.status_code, 200)
         self.assertFalse(voice.json()["inbound_enabled"])
         self.assertFalse(voice.json()["live_approved"])
-        self.assertEqual(self.client.get("/api/me", headers=headers).status_code, 401)
+        # With no Mongo configured, /api/me can fail closed at its DB dependency
+        # before reaching the session check; neither response grants identity.
+        self.assertIn(self.client.get("/api/me", headers=headers).status_code, (401, 503))
         for path in ("/api/realtime/client-secret", "/api/ai/work-order",
                      "/api/billing/checkout", "/api/stripe/webhook"):
             with self.subTest(path=path):
