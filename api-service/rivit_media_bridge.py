@@ -21,13 +21,19 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 import os
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-from twilio_voice import load_tenants, save_intake, utc_now, validate_intake, verify_stream_token
+from twilio_voice import (
+    load_tenants,
+    max_call_seconds,
+    save_intake,
+    utc_now,
+    validate_intake,
+    verify_stream_token,
+)
 
 log = logging.getLogger("rivit.voice")
 
@@ -35,7 +41,6 @@ REALTIME_BASE = "wss://api.openai.com/v1/realtime"
 DEFAULT_MODEL = "gpt-realtime"
 DEFAULT_VOICE = "marin"
 START_TIMEOUT_SECONDS = 15
-DEFAULT_MAX_CALL_SECONDS = 600
 
 # The model may only hand back fields the caller actually spoke. validate_intake
 # enforces the same allow-list and refuses price/quote/hours/appointment keys.
@@ -81,16 +86,6 @@ def realtime_voice() -> str:
 
 def realtime_endpoint() -> str:
     return f"{REALTIME_BASE}?model={quote(realtime_model())}"
-
-
-def max_call_seconds() -> float:
-    """Ceiling on one live call. Junk, zero, negative or infinite falls back to the default."""
-    raw = os.getenv("WRENCHRELAY_VOICE_MAX_CALL_SECONDS", "").strip()
-    try:
-        seconds = float(raw)
-    except ValueError:
-        return float(DEFAULT_MAX_CALL_SECONDS)
-    return seconds if math.isfinite(seconds) and seconds > 0 else float(DEFAULT_MAX_CALL_SECONDS)
 
 
 def build_instructions(tenant: dict) -> str:

@@ -23,7 +23,7 @@ calls, does not change customer routing and does not enable paid audio.
 | `POST /api/voice/intake` | External writer for a structured intake | `X-Rivit-Bridge-Key` |
 | `GET /api/voice/intakes` | Shop operator reads their own shop's intakes | Signed-in session + tenant membership |
 | `GET /api/voice/calls` | Shop operator reads their own shop's call log | Signed-in session + tenant membership |
-| `GET /api/voice/health` | Non-secret readiness report | none (booleans only) |
+| `GET /api/voice/health` | Non-secret readiness report, including the effective `max_call_seconds` | none (non-secret configuration only) |
 
 `api-service/rivit_media_bridge.py`
 
@@ -139,7 +139,8 @@ WRENCHRELAY_VOICE_TENANTS={"+15555550100":{"tenant_id":"griffin-muffler","shop_n
 
 1. Deploy this branch to the **isolated QA** service only.
 2. Confirm `GET /api/voice/health` reports `inbound_enabled: true`,
-   `signature_auth_configured: true`, `tenants_valid: true`.
+   `signature_auth_configured: true`, `tenants_valid: true` and the call ceiling
+   you intend (`max_call_seconds: 600` unless overridden).
 3. On the test number, set **Voice: A call comes in** to
    `POST https://<qa-host>/api/voice/incoming`, and **Call status changes** to
    `POST https://<qa-host>/api/voice/status`.

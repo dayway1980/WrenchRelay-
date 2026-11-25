@@ -244,6 +244,7 @@ def main():
         checked(health["live_approved"] is False, "live audio NOT approved (paid path stays closed)")
         checked(health["signature_auth_configured"] is True, "webhook signature secret is configured")
         checked(health["media_bridge_configured"] is False, "media bridge reports off without an OpenAI credential")
+        checked(health["max_call_seconds"] == 600.0, "health reports the effective 600s call ceiling")
         checked(health["tenants_valid"] and health["tenant_count"] == 2, "two fictional tenants parsed and valid")
         checked(AUTH_TOKEN not in json.dumps(health), "health endpoint exposes no secret")
 

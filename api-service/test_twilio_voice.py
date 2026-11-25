@@ -436,6 +436,13 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(payload["signature_algorithm"], "sha1")
         self.assertTrue(payload["tenants_valid"])
         self.assertEqual(payload["tenant_count"], 2)
+        self.assertEqual(payload["max_call_seconds"], 600.0)
+
+    def test_health_reports_the_effective_call_cap(self):
+        with patch.dict(os.environ, dict(ENV, WRENCHRELAY_VOICE_MAX_CALL_SECONDS="90")):
+            self.assertEqual(build(FakeDb()).get("/api/voice/health").json()["max_call_seconds"], 90.0)
+        with patch.dict(os.environ, dict(ENV, WRENCHRELAY_VOICE_MAX_CALL_SECONDS="0")):
+            self.assertEqual(build(FakeDb()).get("/api/voice/health").json()["max_call_seconds"], 600.0)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 from datetime import datetime, timezone
@@ -38,6 +39,7 @@ from pymongo.errors import DuplicateKeyError
 
 E164 = re.compile(r"^\+[1-9]\d{6,14}$")
 TWILIO_WEBHOOK_PATHS = ("/api/voice/incoming", "/api/voice/status", "/api/voice/intake")
+DEFAULT_MAX_CALL_SECONDS = 600
 
 # Keys a tenant record may contain. Anything else is a configuration error, so a
 # stray "hours", "prices" or "appointment" block can never reach the caller.
@@ -98,6 +100,20 @@ INTAKE_FORBIDDEN_FIELDS = {
 
 def _env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() == "true"
+
+
+def max_call_seconds() -> float:
+    """Ceiling on one live call. Junk, zero, negative or infinite falls back to the default.
+
+    The media bridge enforces this; the health endpoint reports the same value so
+    an operator can confirm the cap before enabling live audio.
+    """
+    raw = os.getenv("WRENCHRELAY_VOICE_MAX_CALL_SECONDS", "").strip()
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return float(DEFAULT_MAX_CALL_SECONDS)
+    return seconds if math.isfinite(seconds) and seconds > 0 else float(DEFAULT_MAX_CALL_SECONDS)
 
 
 def signature_secret() -> tuple[bytes, str] | None:
@@ -559,6 +575,7 @@ def create_voice_inbound_router(
             "tenant_count": len(tenants),
             "bridge_configured": bridge_key_configured(),
             "media_bridge_configured": bridge_key_configured() and bool(os.getenv("OPENAI_API_KEY", "").strip()),
+            "max_call_seconds": max_call_seconds(),
         }
 
     return router

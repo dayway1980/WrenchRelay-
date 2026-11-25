@@ -20,16 +20,14 @@ from starlette.websockets import WebSocketDisconnect
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rivit_media_bridge import (  # noqa: E402
-    DEFAULT_MAX_CALL_SECONDS,
     INTAKE_TOOL,
     BridgeSession,
     build_instructions,
     create_voice_stream_router,
-    max_call_seconds,
     parse_intake_call,
     session_update,
 )
-from twilio_voice import stream_token  # noqa: E402
+from twilio_voice import DEFAULT_MAX_CALL_SECONDS, max_call_seconds, stream_token  # noqa: E402
 
 from test_twilio_voice import FakeDb  # noqa: E402
 
