@@ -22,6 +22,7 @@ import socket
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
 from pathlib import Path
 
 import httpx
@@ -70,14 +71,39 @@ def free_tcp_port():
     raise RuntimeError("Could not obtain a non-default ephemeral TCP port")
 
 
+def validated_loopback_mongo_url(value: str) -> str:
+    """Reject lookalike DNS names, credentials and multi-host Mongo URLs.
+
+    This is a disposable CI harness, not a general-purpose MongoDB client.
+    A string-prefix check is insufficient: localhost.evil.example would pass it.
+    """
+    try:
+        url = urlsplit(value)
+        port = url.port  # Reject malformed, out-of-range ports.
+    except ValueError as exc:
+        raise ValueError("Invalid external MongoDB endpoint") from exc
+    if (
+        url.scheme != "mongodb"
+        or url.hostname not in {"localhost", "127.0.0.1"}
+        or port is None
+        or not (1 <= port <= 65535)
+        or url.username is not None
+        or url.password is not None
+        or "," in url.netloc
+        or url.path not in ("", "/")
+        or bool(url.query)
+        or bool(url.fragment)
+    ):
+        raise ValueError("External MongoDB must be one unauthenticated loopback host and port")
+    return value
+
+
 def provision_mongo():
     """Return (mongo_url, ownership handle). Handle is None for external servers."""
     external = os.getenv("WR_QA_MONGO_URL", "").strip()
     if external:
-        checked(
-            external.startswith(("mongodb://127.0.0.1", "mongodb://localhost")),
-            "external MongoDB URL is loopback-only (no remote or production database)",
-        )
+        external = validated_loopback_mongo_url(external)
+        checked(True, "external MongoDB URL is exactly one loopback host and port")
         print(f"INFO: using supplied loopback MongoDB at {external}", flush=True)
         return external, None
 
@@ -165,6 +191,21 @@ def main():
     import pymongo
 
     checked(os.getenv("WR_QA_ALLOW_LOCAL_MONGO") == "1", "local-only MongoDB opted in explicitly")
+    for blocked in (
+        "mongodb://localhost.evil.example:27017",
+        "mongodb://127.0.0.1.evil.example:27017",
+        "mongodb://127.0.0.1:27017,example.com:27017",
+        "mongodb://user:secret@127.0.0.1:27017",
+        "mongodb+srv://localhost",
+        "mongodb://localhost:27017/?authSource=admin",
+    ):
+        try:
+            validated_loopback_mongo_url(blocked)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("External MongoDB URL guard accepted an unsafe endpoint")
+    print("PASS: external MongoDB URL guard rejects six unsafe forms", flush=True)
     mongo_url, owned = provision_mongo()
     admin_client = pymongo.MongoClient(mongo_url, serverSelectionTimeoutMS=4000)
     admin_client.admin.command("ping")
