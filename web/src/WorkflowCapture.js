@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import RealtimeVoice from "./RealtimeVoice";
-import { WORKFLOW_FIELDS, buildWorkflowDraft, cleanWorkflowSteps, missingWorkflowFields, nextWorkflowPrompt } from "./workflowCapture.mjs";
+import { WORKFLOW_FIELDS, buildWorkflowDraft, cleanWorkflowSteps, createWorkflowDrafts, missingWorkflowFields, nextWorkflowPrompt, readWorkflowDraft, writeWorkflowDraft } from "./workflowCapture.mjs";
 
 /**
  * Technician-controlled, browser-assisted workflow recorder.
@@ -10,26 +10,40 @@ import { WORKFLOW_FIELDS, buildWorkflowDraft, cleanWorkflowSteps, missingWorkflo
  * an OpenAI Realtime voice connection. Nothing is published or sent to CMMS.
  */
 export default function WorkflowCapture({ mode, asset, language, onUseDraft, realtimeEnabled = false }) {
+  const [drafts, setDrafts] = useState(() => createWorkflowDrafts());
   const [capturing, setCapturing] = useState(false);
-  const [entries, setEntries] = useState([]);
-  const [kind, setKind] = useState("symptom");
-  const [text, setText] = useState("");
-  const [source, setSource] = useState("typed");
   const [listening, setListening] = useState(false);
   const [readQuestions, setReadQuestions] = useState(true);
-  const [reviewed, setReviewed] = useState(false);
   const [status, setStatus] = useState("");
   const recognition = useRef(null);
   const serial = useRef(0);
+  const { entries, kind, text, source, reviewed } = readWorkflowDraft(drafts, mode);
   const spanish = language === "Spanish";
   const missing = missingWorkflowFields(entries);
   const nextQuestion = nextWorkflowPrompt(entries, language);
   const draft = buildWorkflowDraft({ steps: entries, mode, asset, language });
 
-  useEffect(() => () => {
+  const updateDraft = (changes) => {
+    setDrafts((previous) => writeWorkflowDraft(previous, mode, { ...readWorkflowDraft(previous, mode), ...changes }));
+  };
+
+  const haltMic = () => {
     try { recognition.current?.abort(); } catch (_) { /* no microphone session */ }
     try { window.speechSynthesis?.cancel(); } catch (_) { /* no speaker */ }
+    recognition.current = null;
+    setListening(false);
+  };
+
+  useEffect(() => () => {
+    haltMic();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
   }, []);
+
+  useEffect(() => {
+    haltMic();
+    setCapturing(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stop in-flight dictation when the workspace mode changes
+  }, [mode]);
 
   const say = (message) => {
     if (!readQuestions || !message || !("speechSynthesis" in window)) return;
@@ -51,10 +65,7 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft, rea
   };
 
   const stop = () => {
-    try { recognition.current?.abort(); } catch (_) { /* ignore */ }
-    try { window.speechSynthesis?.cancel(); } catch (_) { /* ignore */ }
-    recognition.current = null;
-    setListening(false);
+    haltMic();
     setCapturing(false);
     setStatus(spanish ? "Captura detenida. Revise o edite los pasos." : "Capture stopped. Review or edit the recorded steps.");
   };
@@ -77,8 +88,14 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft, rea
       session.onresult = (event) => {
         const heard = Array.from(event.results).map((item) => item[0]?.transcript || "").join(" ").trim();
         if (heard) {
-          setText((previous) => [previous.trim(), heard].filter(Boolean).join(" "));
-          setSource("voice");
+          setDrafts((previous) => {
+            const current = readWorkflowDraft(previous, mode);
+            return writeWorkflowDraft(previous, mode, {
+              ...current,
+              text: [current.text.trim(), heard].filter(Boolean).join(" "),
+              source: "voice"
+            });
+          });
           setStatus(spanish ? "Revise la transcripción antes de añadirla." : "Review the transcript before adding it as a step.");
         }
       };
@@ -100,23 +117,29 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft, rea
     if (!capturing || !text.trim()) return;
     const next = { id: String(++serial.current), kind, text: text.trim().slice(0, 1600), source };
     const updated = [...entries, next].slice(0, 60);
-    setEntries(updated);
-    setKind(missingWorkflowFields(updated)[0]?.id || kind);
-    setText("");
-    setSource("typed");
-    setReviewed(false);
+    updateDraft({
+      entries: updated,
+      kind: missingWorkflowFields(updated)[0]?.id || kind,
+      text: "",
+      source: "typed",
+      reviewed: false
+    });
     setStatus(spanish ? "Paso guardado solo en esta sesión del navegador." : "Step added to this browser session only.");
     say(nextWorkflowPrompt(updated, language));
   };
 
   const editStep = (id, changes) => {
-    setEntries((previous) => previous.map((entry) => entry.id === id ? { ...entry, ...changes } : entry));
-    setReviewed(false);
+    updateDraft({
+      entries: entries.map((entry) => entry.id === id ? { ...entry, ...changes } : entry),
+      reviewed: false
+    });
   };
 
   const removeStep = (id) => {
-    setEntries((previous) => previous.filter((entry) => entry.id !== id));
-    setReviewed(false);
+    updateDraft({
+      entries: entries.filter((entry) => entry.id !== id),
+      reviewed: false
+    });
   };
 
   const exportDraft = () => {
@@ -158,9 +181,15 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft, rea
         : "No screen recording, background microphone, or automatic publication. Speech recognition may use your browser's speech service. Do not dictate passwords or unauthorized customer or plant data."}</p>
 
       {realtimeEnabled && <RealtimeVoice mode={mode} language={language} onTranscript={(heard) => {
-        setText((previous) => [previous.trim(), heard.trim()].filter(Boolean).join(" ").slice(0, 1600));
-        setSource("voice");
-        setReviewed(false);
+        setDrafts((previous) => {
+          const current = readWorkflowDraft(previous, mode);
+          return writeWorkflowDraft(previous, mode, {
+            ...current,
+            text: [current.text.trim(), heard.trim()].filter(Boolean).join(" ").slice(0, 1600),
+            source: "voice",
+            reviewed: false
+          });
+        });
         setStatus("Realtime transcript inserted as an editable draft. Verify it before adding an evidence step.");
       }} />}
 
@@ -176,11 +205,11 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft, rea
 
       <div className="workflowEntry">
         <label htmlFor="workflow-kind">{spanish ? "Tipo de evidencia" : "What are you recording?"}</label>
-        <select id="workflow-kind" value={kind} disabled={!capturing} onChange={(event) => setKind(event.target.value)}>
+        <select id="workflow-kind" value={kind} disabled={!capturing} onChange={(event) => updateDraft({ kind: event.target.value })}>
           {WORKFLOW_FIELDS.map((field) => <option key={field.id} value={field.id}>{spanish ? field.es : field.en}</option>)}
         </select>
         <label htmlFor="workflow-entry">{spanish ? "Sus palabras — edite antes de guardar" : "Your words — edit before saving"}</label>
-        <textarea id="workflow-entry" value={text} disabled={!capturing} onChange={(event) => { setText(event.target.value); setSource("typed"); }} rows={4} maxLength={1600}
+        <textarea id="workflow-entry" value={text} disabled={!capturing} onChange={(event) => updateDraft({ text: event.target.value, source: "typed" })} rows={4} maxLength={1600}
           placeholder={spanish ? "Indique solo lo que sabe o hizo; no suponga resultados." : "Describe exactly what you know or did. Unknowns can stay unknown."} />
         <div className="workflowActions">
           <button className={listening ? "stopCapture" : "workflowSecondary"} type="button" disabled={!capturing || listening} onClick={listen} aria-pressed={listening}>
@@ -218,7 +247,7 @@ export default function WorkflowCapture({ mode, asset, language, onUseDraft, rea
           : (spanish ? "Cada categoría tiene una entrada; ninguna ha sido verificada independientemente." : "Each section has an entry; none has been independently verified.")}</p>
         <pre tabIndex={0} className="workflowDraft">{draft}</pre>
         <label className="workflowConsent">
-          <input type="checkbox" checked={reviewed} disabled={!entries.length} onChange={(event) => setReviewed(event.target.checked)} />
+          <input type="checkbox" checked={reviewed} disabled={!entries.length} onChange={(event) => updateDraft({ reviewed: event.target.checked })} />
           {spanish
             ? "He revisado la transcripción y sé que esto es un borrador, no un procedimiento aprobado."
             : "I reviewed this transcript and understand it is a draft, not an approved procedure or confirmed fix."}

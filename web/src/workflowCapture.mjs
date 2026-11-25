@@ -101,3 +101,55 @@ export function buildWorkflowDraft({ steps, mode = "industrial", asset = "", lan
     : "CAUTION: This draft does not authorize repair, electrical work, bypassing safeguards, LOTO clearance, or CMMS changes. Human review is required.");
   return lines.join("\n");
 }
+
+export function normalizeWorkflowMode(mode) {
+  return mode === "automotive" ? "automotive" : "industrial";
+}
+
+export function emptyWorkflowDraft() {
+  return { entries: [], kind: "symptom", text: "", source: "typed", reviewed: false };
+}
+
+export function createWorkflowDrafts() {
+  return {
+    industrial: emptyWorkflowDraft(),
+    automotive: emptyWorkflowDraft()
+  };
+}
+
+export function readWorkflowDraft(drafts, mode) {
+  const key = normalizeWorkflowMode(mode);
+  const saved = drafts && typeof drafts === "object" ? drafts[key] : null;
+  const kind = WORKFLOW_FIELDS.some((field) => field.id === saved?.kind) ? saved.kind : "symptom";
+  const text = typeof saved?.text === "string" ? saved.text.slice(0, 1600) : "";
+  return {
+    ...emptyWorkflowDraft(),
+    entries: cleanWorkflowSteps(saved?.entries),
+    kind,
+    text,
+    source: saved?.source === "voice" ? "voice" : "typed",
+    reviewed: Boolean(saved?.reviewed) && cleanWorkflowSteps(saved?.entries).length > 0
+  };
+}
+
+export function writeWorkflowDraft(drafts, mode, draft) {
+  const key = normalizeWorkflowMode(mode);
+  const base = drafts && typeof drafts === "object" ? drafts : createWorkflowDrafts();
+  return {
+    ...createWorkflowDrafts(),
+    ...base,
+    [key]: readWorkflowDraft({ [key]: draft }, key)
+  };
+}
+
+export function readModeText(store, mode) {
+  const key = normalizeWorkflowMode(mode);
+  const value = store && typeof store === "object" ? store[key] : "";
+  return typeof value === "string" ? value : "";
+}
+
+export function writeModeText(store, mode, text) {
+  const key = normalizeWorkflowMode(mode);
+  const base = store && typeof store === "object" ? store : { industrial: "", automotive: "" };
+  return { industrial: "", automotive: "", ...base, [key]: typeof text === "string" ? text : "" };
+}
