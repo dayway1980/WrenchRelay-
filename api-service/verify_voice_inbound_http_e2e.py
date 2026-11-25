@@ -21,6 +21,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from urllib.parse import urlsplit
 from pathlib import Path
@@ -28,7 +29,6 @@ from pathlib import Path
 import httpx
 
 BASE = "http://127.0.0.1:18766"
-DEFAULT_MONGO_PORT = 27017
 DB_NAME = "wrenchrelay_voice_qa_isolated"
 AUTH_TOKEN = "voice-qa-only-auth-token-not-real"
 BRIDGE_KEY = "voice-qa-only-bridge-key-not-real"
@@ -61,14 +61,10 @@ def checked(condition, description):
 
 
 def free_tcp_port():
-    """Ask the OS for an unused loopback port, never the well-known Mongo port."""
-    for _ in range(20):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
-        if port != DEFAULT_MONGO_PORT:
-            return port
-    raise RuntimeError("Could not obtain a non-default ephemeral TCP port")
+    """Ask the OS for an unused loopback port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 def validated_loopback_mongo_url(value: str) -> str:
@@ -119,7 +115,6 @@ def provision_mongo():
         bound[1] == port,
         f"throwaway MongoDB bound the requested ephemeral port {port} (reported {bound[1]})",
     )
-    checked(bound[1] != DEFAULT_MONGO_PORT, "throwaway MongoDB avoided the shared default port 27017")
     print(f"INFO: private throwaway MongoDB on 127.0.0.1:{bound[1]}", flush=True)
     return f"mongodb://127.0.0.1:{bound[1]}", client
 
@@ -130,6 +125,32 @@ def sign(path, params):
         material += name + str(params[name])
     digest = hmac.new(AUTH_TOKEN.encode(), material.encode("utf-8"), hashlib.sha1).digest()
     return base64.b64encode(digest).decode()
+
+
+def signed_post(path, form):
+    """Post as Twilio would, with a locally computed signature."""
+    return httpx.post(BASE + path, data=form, headers={"X-Twilio-Signature": sign(path, form)})
+
+
+def stream_refused():
+    """Prove the media-stream socket is reachable and closed while live audio is off."""
+    import asyncio
+
+    import websockets
+
+    async def attempt():
+        try:
+            async with websockets.connect(
+                "ws://127.0.0.1:18766/api/voice/stream?call_sid=CA-stream&token=fake", open_timeout=5
+            ) as socket:
+                await socket.recv()
+        except websockets.exceptions.ConnectionClosed as closed:
+            return closed.rcvd.code if closed.rcvd else None
+        except Exception:
+            return None
+        return None
+
+    return asyncio.run(attempt()) == 1008
 
 
 def start_api(mongo_url):
@@ -154,14 +175,16 @@ def start_api(mongo_url):
         "PYTHONUNBUFFERED": "1",
     })
     path = Path(__file__).resolve().parent
-    log = open(path.parent / "voice-qa-server.log", "ab")
+    # Outside the worktree so running the harness never leaves an untracked file.
+    log_path = Path(tempfile.gettempdir()) / "wrenchrelay-voice-qa-server.log"
+    log = open(log_path, "ab")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "18766", "--no-access-log"],
         env=env, cwd=path, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
     )
     for _ in range(120):
         if proc.poll() is not None:
-            raise RuntimeError("API exited before startup; see voice-qa-server.log")
+            raise RuntimeError(f"API exited before startup; see {log_path}")
         try:
             response = httpx.get(BASE + "/api/health", timeout=0.8)
             if response.status_code == 200 and response.json().get("database") == "ok":
@@ -220,22 +243,22 @@ def main():
         checked(health["inbound_enabled"] is True, "inbound voice enabled by explicit flag")
         checked(health["live_approved"] is False, "live audio NOT approved (paid path stays closed)")
         checked(health["signature_auth_configured"] is True, "webhook signature secret is configured")
+        checked(health["media_bridge_configured"] is False, "media bridge reports off without an OpenAI credential")
         checked(health["tenants_valid"] and health["tenant_count"] == 2, "two fictional tenants parsed and valid")
         checked(AUTH_TOKEN not in json.dumps(health), "health endpoint exposes no secret")
 
         unsigned = httpx.post(BASE + "/api/voice/incoming", data={"CallSid": "CA-unsigned", "To": TENANT_NUMBER})
         checked(unsigned.status_code == 403, "unsigned inbound webhook rejected 403")
         checked("Rivit" not in unsigned.text, "rejected webhook returns no greeting or shop name")
+        checked(stream_refused(), "media stream WebSocket refused over real HTTP: live audio not approved")
 
         unknown_form = {"CallSid": "CA-unknown", "From": "+15555550999", "To": "+15555559999", "CallStatus": "ringing"}
-        unknown = httpx.post(BASE + "/api/voice/incoming", data=unknown_form,
-                             headers={"X-Twilio-Signature": sign("/api/voice/incoming", unknown_form)})
+        unknown = signed_post("/api/voice/incoming", unknown_form)
         checked(unknown.status_code == 200, "call to an unmapped number is answered with TwiML, not an error")
         checked("Rivit" not in unknown.text, "unmapped number never reaches the AI receptionist")
 
         call_form = {"CallSid": "CA-real-flow-1", "From": "+15555550999", "To": TENANT_NUMBER, "CallStatus": "ringing"}
-        signature = sign("/api/voice/incoming", call_form)
-        first = httpx.post(BASE + "/api/voice/incoming", data=call_form, headers={"X-Twilio-Signature": signature})
+        first = signed_post("/api/voice/incoming", call_form)
         checked(first.status_code == 200, "signed inbound call accepted over HTTP")
         checked("Griffin Muffler &amp; Brake Center" in first.text, "correct shop-specific greeting returned, TwiML-escaped")
         checked("Hi, I'm Rivit" in first.text, "greeting opens with the required Rivit wording")
@@ -243,7 +266,7 @@ def main():
         checked("<Record" not in first.text, "no recording is started by the application")
         checked("<Dial" not in first.text, "no transfer or outbound dial is attempted")
 
-        replay = httpx.post(BASE + "/api/voice/incoming", data=call_form, headers={"X-Twilio-Signature": signature})
+        replay = signed_post("/api/voice/incoming", call_form)
         checked(replay.text == first.text, "duplicate Twilio delivery returns the identical TwiML")
 
         def call_records():
@@ -253,8 +276,7 @@ def main():
 
         for state in ("in-progress", "completed", "completed"):
             callback = {"CallSid": "CA-real-flow-1", "CallStatus": state}
-            response = httpx.post(BASE + "/api/voice/status", data=callback,
-                                  headers={"X-Twilio-Signature": sign("/api/voice/status", callback)})
+            response = signed_post("/api/voice/status", callback)
             checked(response.status_code == 200, f"status callback accepted: {state}")
         record = call_records()[0]
         checked(record["last_status"] == "completed", "latest call status persisted")

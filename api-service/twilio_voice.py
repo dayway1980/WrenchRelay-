@@ -28,7 +28,8 @@ import json
 import os
 import re
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
+from urllib.parse import quote
 from xml.sax.saxutils import escape, quoteattr
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -176,14 +177,14 @@ def load_tenants(raw: str | None = None) -> dict[str, dict]:
             raise ValueError(f"tenant number {number!r} is not E.164")
         if not isinstance(config, dict):
             raise ValueError(f"tenant {number!r} must be an object")
-        unknown = set(config) - TENANT_ALLOWED_KEYS
-        if unknown:
-            raise ValueError(f"tenant {number!r} has unsupported keys: {sorted(unknown)}")
         forbidden = set(config) & TENANT_FORBIDDEN_KEYS
         if forbidden:
             raise ValueError(
                 f"tenant {number!r} may not configure inferred shop facts: {sorted(forbidden)}"
             )
+        unknown = set(config) - TENANT_ALLOWED_KEYS
+        if unknown:
+            raise ValueError(f"tenant {number!r} has unsupported keys: {sorted(unknown)}")
         for required in ("tenant_id", "shop_name", "greeting"):
             if not str(config.get(required, "")).strip():
                 raise ValueError(f"tenant {number!r} requires {required}")
@@ -204,7 +205,31 @@ def resolve_tenant(dialed: str | None, tenants: dict[str, dict]) -> dict | None:
     return tenants.get(dialed.strip())
 
 
-def _now() -> str:
+def bridge_key_configured() -> bool:
+    return bool(os.getenv("WRENCHRELAY_VOICE_BRIDGE_KEY", "").strip())
+
+
+def stream_token(call_sid: str) -> str:
+    """Authorise one media stream without putting a reusable secret in the URL.
+
+    Twilio does not sign WebSocket upgrades, so the stream URL carries an HMAC of
+    the call identity keyed by the bridge key: valid for this call only, useless
+    on any other call, and never the credential itself.
+    """
+    key = os.getenv("WRENCHRELAY_VOICE_BRIDGE_KEY", "").strip()
+    call_sid = (call_sid or "").strip()
+    if not key or not call_sid:
+        return ""
+    digest = hmac.new(key.encode("utf-8"), call_sid.encode("utf-8"), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")[:32]
+
+
+def verify_stream_token(call_sid: str, token: str | None) -> bool:
+    expected = stream_token(call_sid)
+    return bool(expected) and bool(token) and hmac.compare_digest(expected, str(token).strip())
+
+
+def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -239,8 +264,12 @@ def live_twiml(tenant: dict, stream_url: str, call_sid: str) -> str:
 
     The greeting is spoken by Twilio from configuration, so the exact
     shop-specific wording is guaranteed even if the model misbehaves. The model
-    receives only tenant identity and call identity, never customer records.
+    receives only tenant identity and call identity, never customer records. The
+    stream URL carries this call's token, never a reusable one.
     """
+    token = stream_token(call_sid)
+    separator = "&" if "?" in stream_url else "?"
+    stream_url = f"{stream_url}{separator}call_sid={quote(call_sid)}&token={token}"
     parts = [_say(tenant["greeting"])]
     if tenant.get("recording") == "disclosure":
         parts.append(_say("This call may be recorded so the shop can help you accurately."))
@@ -271,35 +300,12 @@ class MongoReplayStore:
     def __init__(self, collection):
         self.collection = collection
 
-    def ensure_indexes(self) -> None:
-        # _id is unique already; this documents intent for the operator.
-        try:
-            self.collection.create_index("received_at")
-        except Exception:  # pragma: no cover - index creation is best effort
-            pass
-
     def claim(self, key: str, document: dict) -> bool:
         try:
-            self.collection.insert_one({"_id": key, "received_at": _now(), **document})
+            self.collection.insert_one({"_id": key, "received_at": utc_now(), **document})
             return True
         except DuplicateKeyError:
             return False
-
-
-class MemoryReplayStore:
-    """In-process equivalent used by the offline test suite only."""
-
-    def __init__(self) -> None:
-        self.keys: dict[str, dict] = {}
-
-    def ensure_indexes(self) -> None:
-        return None
-
-    def claim(self, key: str, document: dict) -> bool:
-        if key in self.keys:
-            return False
-        self.keys[key] = {"received_at": _now(), **document}
-        return True
 
 
 def _clean_number(value: str | None) -> str | None:
@@ -341,6 +347,24 @@ def validate_intake(payload: dict) -> dict:
     if not cleaned.get("service_request"):
         raise HTTPException(status_code=422, detail="service_request is required to record an intake.")
     return cleaned
+
+
+def save_intake(db, tenant_id: str, call_sid: str, fields: dict) -> dict:
+    """Validate and upsert one call's intake.
+
+    Shared by the HTTP intake endpoint and the media bridge, so a bridge call and
+    an HTTP call can never apply different rules.
+    """
+    cleaned = validate_intake(fields)
+    db.voice_intakes.update_one(
+        {"tenant_id": tenant_id, "call_sid": call_sid},
+        {"$set": {"tenant_id": tenant_id, "call_sid": call_sid, "fields": cleaned,
+                  "status": "complete" if cleaned.get("service_request") else "incomplete",
+                  "updated_at": utc_now()},
+         "$setOnInsert": {"created_at": utc_now()}},
+        upsert=True,
+    )
+    return db.voice_intakes.find_one({"tenant_id": tenant_id, "call_sid": call_sid}, {"_id": 0})
 
 
 def create_voice_inbound_router(
@@ -391,17 +415,17 @@ def create_voice_inbound_router(
                 require_db().voice_calls.update_one(
                     {"call_sid": call_sid},
                     {"$set": {"call_sid": call_sid, "to": dialed, "from": form.get("From"),
-                              "tenant_id": None, "outcome": "unmapped_number", "updated_at": _now()},
-                     "$setOnInsert": {"created_at": _now()}},
+                              "tenant_id": None, "outcome": "unmapped_number", "updated_at": utc_now()},
+                     "$setOnInsert": {"created_at": utc_now()}},
                     upsert=True,
                 )
             return _twiml(unknown_number_twiml())
 
+        # Live audio needs the approval flag, a secure media endpoint AND a bridge
+        # key, because the per-call stream token cannot be minted without it.
         stream_url = os.getenv("WRENCHRELAY_VOICE_STREAM_URL", "").strip()
-        live = _env_flag("WRENCHRELAY_VOICE_LIVE_APPROVED")
-        if live and not stream_url.startswith("wss://"):
-            # A live flag without a secure media endpoint must never answer with audio.
-            live = False
+        stream_url = stream_url if stream_url.startswith("wss://") else ""
+        live = _env_flag("WRENCHRELAY_VOICE_LIVE_APPROVED") and bool(stream_url) and bool(stream_token(call_sid))
 
         if first_delivery:
             require_db().voice_calls.update_one(
@@ -410,8 +434,8 @@ def create_voice_inbound_router(
                           "tenant_id": tenant["tenant_id"], "shop_name": tenant["shop_name"],
                           "mode": "live" if live else "greeting_hold",
                           "recording": tenant.get("recording", "none"),
-                          "outcome": "answered", "updated_at": _now()},
-                 "$setOnInsert": {"created_at": _now()}},
+                          "outcome": "answered", "updated_at": utc_now()},
+                 "$setOnInsert": {"created_at": utc_now()}},
                 upsert=True,
             )
 
@@ -434,8 +458,8 @@ def create_voice_inbound_router(
         )
         require_db().voice_calls.update_one(
             {"call_sid": call_sid},
-            {"$set": {"call_sid": call_sid, "last_status": status, "updated_at": _now()},
-             "$setOnInsert": {"created_at": _now()},
+            {"$set": {"call_sid": call_sid, "last_status": status, "updated_at": utc_now()},
+             "$setOnInsert": {"created_at": utc_now()},
              "$addToSet": {"status_history": status}},
             upsert=True,
         )
@@ -466,21 +490,7 @@ def create_voice_inbound_router(
             raise HTTPException(status_code=503, detail="Voice tenant configuration is invalid.")
         if tenant_id not in {t["tenant_id"] for t in tenants.values()}:
             raise HTTPException(status_code=403, detail="Unknown tenant.")
-        fields = validate_intake(payload.get("fields") or {})
-        db = require_db()
-        record = {
-            "tenant_id": tenant_id,
-            "call_sid": call_sid,
-            "fields": fields,
-            "status": "complete" if fields.get("service_request") else "incomplete",
-            "updated_at": _now(),
-        }
-        db.voice_intakes.update_one(
-            {"tenant_id": tenant_id, "call_sid": call_sid},
-            {"$set": record, "$setOnInsert": {"created_at": _now()}},
-            upsert=True,
-        )
-        saved = db.voice_intakes.find_one({"tenant_id": tenant_id, "call_sid": call_sid}, {"_id": 0})
+        saved = save_intake(require_db(), tenant_id, call_sid, payload.get("fields") or {})
         return JSONResponse(saved, headers={"Cache-Control": "no-store"})
 
     def _authorized_tenant(user: str, tenant_id: str, tenants: dict[str, dict]) -> dict:
@@ -547,7 +557,8 @@ def create_voice_inbound_router(
             "signature_algorithm": credentials[1] if credentials else None,
             "tenants_valid": tenants_valid,
             "tenant_count": len(tenants),
-            "bridge_configured": bool(os.getenv("WRENCHRELAY_VOICE_BRIDGE_KEY", "").strip()),
+            "bridge_configured": bridge_key_configured(),
+            "media_bridge_configured": bridge_key_configured() and bool(os.getenv("OPENAI_API_KEY", "").strip()),
         }
 
     return router

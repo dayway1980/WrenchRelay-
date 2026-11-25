@@ -294,10 +294,23 @@ class RoutingTests(unittest.TestCase):
             response = post_signed(build(db), INCOMING, incoming_form())
         body = response.text
         self.assertIn("<Connect><Stream", body)
-        self.assertIn('url="wss://api.example.test/api/voice/media"', body)
+        self.assertIn('url="wss://api.example.test/api/voice/media?call_sid=', body)
+        self.assertIn("&amp;token=", body)
+        self.assertNotIn(BRIDGE_KEY, body, "the media URL carries a per-call token, never the key")
         self.assertIn("may be recorded", body)
         self.assertIn('name="tenant_id" value="griffin-muffler"', body)
         self.assertEqual(db.voice_calls.docs[0]["mode"], "live")
+
+    def test_live_flag_without_bridge_key_falls_back_to_hold(self):
+        env = dict(ENV)
+        env["WRENCHRELAY_VOICE_LIVE_APPROVED"] = "true"
+        env["WRENCHRELAY_VOICE_STREAM_URL"] = "wss://api.example.test/api/voice/media"
+        env["WRENCHRELAY_VOICE_BRIDGE_KEY"] = ""
+        db = FakeDb()
+        with patch.dict(os.environ, env):
+            response = post_signed(build(db), INCOMING, incoming_form())
+        self.assertNotIn("<Connect>", response.text)
+        self.assertEqual(db.voice_calls.docs[0]["mode"], "greeting_hold")
 
     def test_inbound_disabled_returns_503_not_audio(self):
         env = dict(ENV)

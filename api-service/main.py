@@ -10,6 +10,7 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pymongo import MongoClient
 from openai import OpenAI
+from rivit_media_bridge import create_voice_stream_router
 from twilio_voice import create_voice_inbound_router
 
 try:
@@ -333,6 +334,8 @@ def config():
 app.include_router(create_voice_inbound_router(
     require_db, current_user, os.getenv("ADMIN_EMAIL", "").strip().lower()
 ))
+# Media Streams -> OpenAI Realtime bridge, behind the live flag, a per-call token and an OpenAI key.
+app.include_router(create_voice_stream_router(require_db))
 
 
 @app.post("/api/auth/register")
