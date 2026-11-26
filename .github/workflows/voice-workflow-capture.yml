@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/voice-workflow-capture-20261123
+      - fix/private-voice-qa-commissioning-20261124
   pull_request:
     paths:
       - 'web/src/**'
@@ -19,6 +20,14 @@ permissions:
   contents: read
 
 jobs:
+  isolated-qa-image-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and build the actual private QA image
+        run: docker build --file Dockerfile.voice-qa --tag wrenchrelay-voice-qa:ci .
+
   evidence-and-safety-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 8

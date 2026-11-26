@@ -41,6 +41,8 @@ def start_api():
         "FRONTEND_URL": BASE,
         "CORS_ORIGINS": BASE,
         "PYTHONUNBUFFERED": "1",
+        "WR_ISOLATED_QA": "true",
+        "WR_QA_ACCESS_TOKEN": "CI-ONLY-NO-REAL-SECRETS-VOICE-QA",
     })
     path = Path(__file__).resolve().parent
     proc = subprocess.Popen(
@@ -90,12 +92,14 @@ def main():
     proc = None
     try:
         proc = start_api()
-        with httpx.Client(base_url=BASE, timeout=12) as owner, httpx.Client(base_url=BASE, timeout=12) as other:
+        checked(httpx.get(BASE + "/api/me").status_code == 403,
+                "QA boundary rejects requests without its access secret")
+        with httpx.Client(base_url=BASE, timeout=12, headers={"X-WR-QA-Access": "CI-ONLY-NO-REAL-SECRETS-VOICE-QA"}) as owner, httpx.Client(base_url=BASE, timeout=12, headers={"X-WR-QA-Access": "CI-ONLY-NO-REAL-SECRETS-VOICE-QA"}) as other:
             checked(owner.get("/api/work-orders").status_code == 401,
                     "anonymous saved-work-order read rejected")
             checked(owner.get("/api/me").status_code == 401, "anonymous identity rejected")
-            checked(owner.post("/api/realtime/client-secret", json={"mode":"industrial", "language":"English"}, headers={"Origin": BASE}).status_code == 401,
-                    "anonymous Realtime key request rejected before provider access")
+            checked(owner.post("/api/realtime/client-secret", json={"mode":"industrial", "language":"English"}, headers={"Origin": BASE}).status_code == 503,
+                    "anonymous Realtime blocked by private QA provider hold")
             a = owner.post("/api/auth/register", json={
                 "email": "qa-owner@example.com",
                 "name": "CI Owner Test",
@@ -106,6 +110,8 @@ def main():
                 owner.headers["Authorization"] = "Bearer " + a.json()["token"]
             checked(owner.get("/api/me").json().get("email") == "qa-owner@example.com",
                     "signed-in owner session validated")
+            checked(owner.post("/api/auth/register", json={"email":"qa-third@example.com","password":"strong-pass-qa-just-test"}, headers={"X-WR-QA-Access":"incorrect"}).status_code == 403,
+                    "wrong QA access secret cannot register accounts")
             checked(owner.get("/api/config").json().get("realtime_voice_enabled") is False,
                     "no-cost Realtime remains disabled by default")
             checked(owner.post("/api/realtime/client-secret", json={"mode":"industrial", "language":"English"}, headers={"Origin": BASE}).status_code == 503,
@@ -152,7 +158,7 @@ def main():
         proc = None
         # DB container stays alive while the actual API process is restarted.
         proc = start_api()
-        with httpx.Client(base_url=BASE, timeout=12) as logged_back_in:
+        with httpx.Client(base_url=BASE, timeout=12, headers={"X-WR-QA-Access": "CI-ONLY-NO-REAL-SECRETS-VOICE-QA"}) as logged_back_in:
             login = logged_back_in.post("/api/auth/login", json={
                 "email": "qa-owner@example.com",
                 "password": "Qa-Only-Strong-Password-2246!",
