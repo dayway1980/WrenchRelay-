@@ -1,4 +1,12 @@
 import os
+import sys
+from pathlib import Path
+
+# Also support test harnesses that load this entrypoint by absolute file path.
+API_MODULE_DIRECTORY = str(Path(__file__).resolve().parent)
+if API_MODULE_DIRECTORY not in sys.path:
+    sys.path.insert(0, API_MODULE_DIRECTORY)
+
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -10,6 +18,8 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pymongo import MongoClient
 from openai import OpenAI
+from realtime_voice import create_voice_router, realtime_enabled
+from release_safety import unisolated_preview
 
 try:
     import stripe
@@ -27,9 +37,14 @@ APP_NAME = "WrenchRelay"
 APP_VERSION = "2.0.0"
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALG = "HS256"
+PREVIEW_SAFETY_HOLD = unisolated_preview()
+# Vercel previews share database/API secrets with production: fail closed until an
+# isolated sandbox backend has been separately provisioned and reviewed.
 MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URI")
+if PREVIEW_SAFETY_HOLD:
+    MONGO_URL = None  # No customer DB connection from an unisolated preview.
 DB_NAME = (os.getenv("DB_NAME") or "").strip() or "wrenchrelay"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_API_KEY = "" if PREVIEW_SAFETY_HOLD else os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL") or None
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -313,17 +328,22 @@ def health():
 @app.get("/api/config")
 def config():
     return {
+        "realtime_voice_enabled": realtime_enabled() and not PREVIEW_SAFETY_HOLD,
+        "preview_safety_hold": PREVIEW_SAFETY_HOLD,
         "app_name": APP_NAME,
         "version": APP_VERSION,
         "google_client_id": GOOGLE_CLIENT_ID,
         "google_enabled": bool(GOOGLE_CLIENT_ID and google_id_token),
-        "stripe_enabled": bool((os.getenv("STRIPE_SECRET_KEY_LIVE") or os.getenv("STRIPE_SECRET_KEY")) and stripe),
+        "stripe_enabled": bool(stripe_key() and stripe),
         "legal_entity": LEGAL_ENTITY_NAME,
         "legal_email": LEGAL_EMAIL,
         "personalities": [{"id": k, "name": k.replace("-", " ").title(), "description": v} for k, v in PERSONALITIES.items()],
         "brava_domain": BRAVA_DOMAIN,
     }
 
+
+# Separate, cost-guarded Realtime credential endpoint: authenticated and OFF by default.
+app.include_router(create_voice_router(current_user, user_doc, require_db))
 
 @app.post("/api/auth/register")
 def register(body: Register, response: Response):
@@ -476,6 +496,8 @@ def knowledge_search(q: str, user=Depends(current_user)):
 
 
 def stripe_key():
+    if PREVIEW_SAFETY_HOLD:
+        return ""
     return os.getenv("STRIPE_SECRET_KEY_LIVE") or os.getenv("STRIPE_SECRET_KEY") or ""
 
 
