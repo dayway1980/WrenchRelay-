@@ -68,6 +68,39 @@ jobs:
         run: |
           set -euo pipefail
           sha256sum app/build/outputs/apk/debug/*.apk app/build/outputs/bundle/release/*.aab > SHA256SUMS.txt
+      - name: Verify Gradle Play identity overrides in merged manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 12345 is a CI-only fixture, not an approved or unused Play version.
+          # This task changes only manifest intermediates after the default AAB is built.
+          gradle --no-daemon -PplayApplicationId=com.wrenchrelayllc.industrial \
+            -PplayVersionCode=12345 :app:processReleaseMainManifest
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import xml.etree.ElementTree as ET
+
+          manifests = list(Path("app/build/intermediates/merged_manifest/release").glob("**/AndroidManifest.xml"))
+          assert len(manifests) == 1, f"Expected one release merged manifest, got {manifests}"
+          root = ET.parse(manifests[0]).getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+          assert root.get("package") == "com.wrenchrelayllc.industrial", root.attrib
+          assert root.get(android + "versionCode") == "12345", root.attrib
+          assert any(a.get(android + "name") == "com.wrenchrelay.industrial.MainActivity"
+                     for a in root.findall("./application/activity")), "Launcher class must keep the existing namespace"
+          print("LLC package and CI version override verified in Gradle merged manifest.")
+
+          for flag, message in (
+              ("-PplayApplicationId=com.example.invalid", "playApplicationId must match"),
+              ("-PplayVersionCode=0", "playVersionCode must be an integer"),
+              ("-PplayVersionCode=2100000001", "playVersionCode must be an integer"),
+          ):
+              result = subprocess.run(["gradle", "--no-daemon", flag, ":app:help"],
+                                      text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              assert result.returncode != 0 and message in result.stdout, result.stdout
+              print(f"Rejected invalid Play identity input: {flag}")
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wrenchrelay-industrial-android-build
