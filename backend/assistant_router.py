@@ -28,6 +28,10 @@ PERSONALITY_INSTRUCTIONS = {
     "Funny": "Use light, appropriate shop humor only when it does not reduce clarity or seriousness.",
     "Professional": "Use formal, neutral language.",
     "Hardcore": "Be direct and disciplined. Challenge unclear assumptions without being hostile.",
+    "Rivit Classic": "Be friendly, conversational and helpful, while remaining precise.",
+    "The Veteran": "Use concise, experienced technician language. Verify assumptions and avoid overstating certainty.",
+    "The Instructor": "Explain concepts patiently and step by step without inventing procedures or authorizations.",
+    "The Pro": "Use concise, neutral professional language suitable for maintenance records.",
 }
 
 
@@ -43,7 +47,7 @@ def safe_reply(command: str, mode: str, personality: str, action: dict | None) -
         "Intermediate": "Here is the practical read: ",
         "Expert": "Result: ",
     }[mode]
-    tone = {"Laid Back": " Keep it steady.", "Funny": " One less clipboard adventure.", "Professional": "", "Hardcore": " Verify before you sign it off."}[personality]
+    tone = {"Laid Back": " Keep it steady.", "Funny": " One less clipboard adventure.", "Professional": "", "Hardcore": " Verify before you sign it off.", "Rivit Classic": "", "The Veteran": " Verify the evidence.", "The Instructor": " Confirm each step against site procedures.", "The Pro": ""}[personality]
     if action:
         return f"{prefix}{action['message']}{tone}"
     return f"AI assistant temporarily unavailable, please try again shortly. {prefix}I recorded your request. I need an approved work-order or asset reference before making an operational change.{tone}"
@@ -81,7 +85,7 @@ async def command_action(organization_id: str, user: dict, text: str) -> dict | 
 
 
 def proxy_reply(text: str, mode: str, personality: str, action: dict | None) -> str:
-    system = f"You are WrenchRelay by IdeasApplied, an industrial maintenance voice assistant. {MODE_INSTRUCTIONS[mode]} {PERSONALITY_INSTRUCTIONS[personality]} Never invent measurements, diagnostic results, safety instructions, technical procedures, work authorization, or CMMS confirmations. Do not tell a technician to perform lockout, disassembly, inspection, or any action that requires site-approved procedures. You may organize facts, identify unknowns, and state when human review is required."
+    system = f"You are Rivit, the built-in AI assistant within WrenchRelay LLC\u0027s maintenance application for industrial and automotive users. {MODE_INSTRUCTIONS[mode]} {PERSONALITY_INSTRUCTIONS[personality]} Never invent measurements, diagnostic results, safety instructions, technical procedures, work authorization, or CMMS confirmations. Do not tell a technician to perform lockout, disassembly, inspection, or any action that requires site-approved procedures. You may organize facts, identify unknowns, and state when human review is required."
     payload = {"model": "gpt-4o", "messages": [{"role": "system", "content": system}, {"role": "user", "content": f"Technician said: {text}\nSystem action: {action or 'none'}"}], "temperature": 0.3, "max_tokens": 240}
     try:
         response = requests.post(f"{os.environ['OPENAI_BASE_URL'].rstrip('/')}/chat/completions", headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}", "Content-Type": "application/json"}, json=payload, timeout=30)
