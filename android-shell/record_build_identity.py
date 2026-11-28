@@ -20,9 +20,9 @@ def main():
     assert re.search(r"package: name='" + re.escape(PACKAGE) + r"' versionCode='1'", badging), badging
     assert "android.permission.RECORD_AUDIO" not in badging, "Unexpected direct microphone permission"
     assert "targetSdkVersion:'36'" in badging, badging
-    signer = subprocess.check_output([str(tools[-1].with_name("apksigner")), "verify", "--print-certs", str(apk)], text=True)
-    match = re.search(r"Signer #1 certificate SHA-256 digest: ([0-9A-Fa-f]+)", signer)
-    assert match, "APK signer fingerprint missing"
+    signer = subprocess.check_output([str(tools[-1].with_name("apksigner")), "verify", "--verbose", "--print-certs", str(apk)], text=True)
+    match = re.search(r"certificate[^\n]*SHA-?256[^:\n]*:\s*([0-9A-Fa-f]{64})", signer, re.IGNORECASE)
+    assert match, "APK signer fingerprint missing from verified debug certificate output: " + signer
     data = {
         "package": PACKAGE, "versionCode": 1, "versionName": "1.0.0", "targetSdk": 36,
         "checkout_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
