@@ -3,9 +3,9 @@ plugins {
 }
 
 // These properties are supplied by the existing protected Play signing workflow.
-// Defaults preserve the separate com.wrenchrelay.industrial development build.
+// The requested LLC package is the default; the legacy package stays explicitly selectable.
 val configuredPlayApplicationId = providers.gradleProperty("playApplicationId")
-    .getOrElse("com.wrenchrelay.industrial")
+    .getOrElse("com.wrenchrelayllc.industrial")
 require(configuredPlayApplicationId in setOf(
     "com.wrenchrelay.industrial", "com.wrenchrelayllc.industrial"
 )) { "playApplicationId must match an existing WrenchRelay Industrial package" }

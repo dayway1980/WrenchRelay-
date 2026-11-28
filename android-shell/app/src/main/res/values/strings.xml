@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="app_name">WrenchRelay Industrial</string>
-  <string name="account_settings">Privacy and account deletion</string>
-  <string name="account_settings_content_description">Open the privacy policy or request account deletion</string>
+  <string name="account_settings">Privacy &amp; account</string>
+  <string name="account_settings_content_description">Open privacy, account deletion, or app information</string>
   <string name="account_dialog_title">Privacy and account</string>
   <string name="privacy_action">Read privacy policy</string>
   <string name="deletion_action">Request account deletion</string>
@@ -10,5 +10,23 @@
   <string name="link_unavailable">This account link is unavailable</string>
   <string name="open_failed">Unable to open link</string>
   <string name="file_picker_unavailable">File picker unavailable</string>
-  <string name="microphone_fallback">Microphone unavailable; use text input instead</string>
+  <string name="microphone_fallback">Use Speak note or type your maintenance notes.</string>
+  <string name="speak_note">Speak note</string>
+  <string name="retry">Retry</string>
+  <string name="network_error">WrenchRelay could not load. Check your connection, then retry.</string>
+  <string name="select_notes_first">Tap a maintenance notes box in the app, then tap Speak note. Account and password fields are never filled by speech.</string>
+  <string name="speech_prompt">Describe the maintenance observation or repair.</string>
+  <string name="recognizer_unavailable">Speech recognition is unavailable on this device. You can type your notes.</string>
+  <string name="review_speech">Review your note</string>
+  <string name="use_note">Use note</string>
+  <string name="copy_note">Copy note</string>
+  <string name="note_added">Note added. Review it before submitting.</string>
+  <string name="notes_changed">The notes box changed. Copy the text and paste it into the intended record.</string>
+  <string name="note_copied">Note copied</string>
+  <string name="about_app">About this app</string>
+  <string name="app_version">Version %1$s</string>
+  <string name="qa_build">QA debug build - not a Google Play release</string>
+  <string name="app_operator">Operated by WrenchRelay LLC</string>
+  <string name="full_privacy">Full web policy</string>
+  <string name="client_privacy_notice">WrenchRelay LLC operates this app.\n\nAccount and maintenance information you enter in the web workspace is handled by the WrenchRelay service. Selected files are provided only through the file picker.\n\nSpeak note opens the device speech-recognition activity. Its provider may process audio under its own terms. This client receives recognized text and does not request microphone permission or capture raw microphone audio for that flow. Review text before adding it to a notes box. Typing remains available.\n\nThe app connects to wrenchrelayllc.com over HTTPS. The web service privacy policy explains service-side processing and account deletion. Deletion must be requested and processed; opening a link alone does not delete data.\n\nAI output may be wrong. Verify the equipment, evidence, and draft before approving a maintenance record. Follow site procedures, lockout/tagout, and OEM instructions.\n\nContact: support@wrenchrelay.app</string>
 </resources>

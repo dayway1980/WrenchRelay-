@@ -55,6 +55,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s . -p 'test_locales.py' -v
+      - name: Test native dictation data and field boundaries
+        run: node --test test_native_voice.mjs
       - name: Lint release
         run: gradle --no-daemon :app:lintRelease
       - name: Run unit tests
@@ -68,13 +70,22 @@ jobs:
         run: |
           set -euo pipefail
           sha256sum app/build/outputs/apk/debug/*.apk app/build/outputs/bundle/release/*.aab > SHA256SUMS.txt
+      - name: Validate real LLC bundle and record exact build identity
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLETOOL="$RUNNER_TEMP/bundletool-all-1.18.3.jar"
+          curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 120 https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar --output "$BUNDLETOOL"
+          python3 record_build_identity.py --bundletool "$BUNDLETOOL"
       - name: Verify Gradle Play identity overrides in merged manifest
         shell: bash
         run: |
           set -euo pipefail
           # 12345 is a CI-only fixture, not an approved or unused Play version.
           # This task changes only manifest intermediates after the default AAB is built.
-          gradle --no-daemon -PplayApplicationId=com.wrenchrelayllc.industrial \
+          gradle --no-daemon -PplayApplicationId=com.wrenchrelay.industrial \
             -PplayVersionCode=12345 :app:processReleaseMainManifest
           python3 - <<'PY'
           from pathlib import Path
@@ -85,11 +96,11 @@ jobs:
           assert len(manifests) == 1, f"Expected one release merged manifest, got {manifests}"
           root = ET.parse(manifests[0]).getroot()
           android = "{http://schemas.android.com/apk/res/android}"
-          assert root.get("package") == "com.wrenchrelayllc.industrial", root.attrib
+          assert root.get("package") == "com.wrenchrelay.industrial", root.attrib
           assert root.get(android + "versionCode") == "12345", root.attrib
           assert any(a.get(android + "name") == "com.wrenchrelay.industrial.MainActivity"
                      for a in root.findall("./application/activity")), "Launcher class must keep the existing namespace"
-          print("LLC package and CI version override verified in Gradle merged manifest.")
+          print("Legacy override and CI version verified; default artifacts target the LLC package.")
 
           for flag, message in (
               ("-PplayApplicationId=com.example.invalid", "playApplicationId must match"),
@@ -109,5 +120,47 @@ jobs:
             android-shell/app/build/outputs/bundle/release/*.aab
             android-shell/app/build/reports/lint-results-release.html
             android-shell/SHA256SUMS.txt
+            android-shell/BUILD_IDENTITY.json
           if-no-files-found: error
+          retention-days: 14
+
+  device-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: wrenchrelay-industrial-android-build
+          path: ${{ runner.temp }}/android-artifacts
+      - name: Boot disposable Android emulator and exercise the real APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chmod a+rw /dev/kvm
+          sdkmanager "emulator" "system-images;android-35;default;x86_64"
+          echo no | avdmanager create avd --name wr-ci --package "system-images;android-35;default;x86_64" --force
+          "$ANDROID_HOME/emulator/emulator" -avd wr-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          trap 'kill "$EMULATOR_PID" 2>/dev/null || true' EXIT
+          adb wait-for-device
+          timeout 240 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb shell input keyevent 82
+          python3 android-shell/device_smoke.py --artifacts "$RUNNER_TEMP/android-artifacts" --output device-evidence
+      - name: Save device evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wrenchrelay-industrial-device-evidence
+          path: |
+            device-evidence/
+            ${{ runner.temp }}/emulator.log
+          if-no-files-found: warn
           retention-days: 14
