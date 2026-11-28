@@ -146,8 +146,13 @@ jobs:
         run: |
           set -euo pipefail
           sudo chmod a+rw /dev/kvm
-          sdkmanager "emulator" "system-images;android-35;default;x86_64"
-          echo no | avdmanager create avd --name wr-ci --package "system-images;android-35;default;x86_64" --force
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
+          "$SDKMANAGER" "emulator" "system-images;android-36;google_apis;x86_64"
+          echo no | "$AVDMANAGER" create avd --name wr-ci --package "system-images;android-36;google_apis;x86_64" --force
           "$ANDROID_HOME/emulator/emulator" -avd wr-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 > "$RUNNER_TEMP/emulator.log" 2>&1 &
           EMULATOR_PID=$!
           trap 'kill "$EMULATOR_PID" 2>/dev/null || true' EXIT

@@ -25,6 +25,7 @@ and deletion request links, and an About screen with installed package/version.
 English and Spanish native resources are independent of web language.
 
 A loading indicator and connection-error retry replace a blank failed page.
+System and keyboard insets and the AndroidX back dispatcher support Android 16.
 Only HTTPS first-party pages stay in the WebView; unsupported schemes are blocked.
 File selection is explicit and restricted to a first-party top-level page.
 The app has a WR launcher mark, not a certification or performance claim.
@@ -37,7 +38,7 @@ real LLC AAB. BUILD_IDENTITY.json records package/version, checkout/head commits
 hashes and debug certificate. The default APK is debug-signed, not signed with the
 registered owner upload key. The release AAB is unsigned.
 
-A disposable API 35 emulator installs the exact hashed APK, opens the real public
+A disposable API 36 emulator installs the exact hashed APK, opens the real public
 sign-in screen, checks identity/privacy controls, and confirms speech cannot target
 the account form. This is not authenticated maintenance, speech-provider audio,
 deletion fulfillment, CMMS integration, or physical-device acceptance.

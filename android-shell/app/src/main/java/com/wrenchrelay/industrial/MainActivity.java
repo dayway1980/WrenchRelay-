@@ -32,6 +32,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -53,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
   private LinearLayout networkError;
   private ValueCallback<Uri[]> pendingFiles;
   private boolean speechActive;
+  private OnBackPressedCallback webBack;
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
@@ -83,6 +85,13 @@ public class MainActivity extends AppCompatActivity {
     screen.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
     FrameLayout content = new FrameLayout(this);
     web = new WebView(this);
+    webBack = new OnBackPressedCallback(false) {
+      @Override public void handleOnBackPressed() {
+        if (web != null && web.canGoBack()) web.goBack();
+        else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); }
+      }
+    };
+    getOnBackPressedDispatcher().addCallback(this, webBack);
     web.setBackgroundColor(Color.rgb(7, 17, 31));
     content.addView(web, new FrameLayout.LayoutParams(-1, -1));
     networkError = new LinearLayout(this);
@@ -145,6 +154,10 @@ public class MainActivity extends AppCompatActivity {
       }
       @Override public void onPageFinished(WebView view, String url) {
         progress.setVisibility(View.GONE);
+        webBack.setEnabled(view.canGoBack());
+      }
+      @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+        webBack.setEnabled(view.canGoBack());
       }
       @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
         if (request.isForMainFrame()) showNetworkError();
@@ -320,11 +333,6 @@ public class MainActivity extends AppCompatActivity {
   @Override protected void onSaveInstanceState(Bundle state) {
     if (web != null) web.saveState(state);
     super.onSaveInstanceState(state);
-  }
-
-  @Override public void onBackPressed() {
-    if (web != null && web.canGoBack()) web.goBack();
-    else super.onBackPressed();
   }
 
   @Override protected void onDestroy() {
