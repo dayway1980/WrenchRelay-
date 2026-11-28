@@ -1,1 +1,1 @@
-<resources><style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar"><item name="android:windowLightStatusBar">false</item><item name="android:windowLightNavigationBar">false</item><item name="android:statusBarColor">#07111F</item><item name="android:navigationBarColor">#07111F</item></style></resources>
+<resources><style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar"><item name="android:windowLightStatusBar">false</item><item name="android:statusBarColor">#07111F</item><item name="android:navigationBarColor">#07111F</item></style></resources>

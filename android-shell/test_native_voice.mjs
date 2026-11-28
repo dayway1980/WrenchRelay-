@@ -45,3 +45,10 @@ test("recognized text is data; JavaScript and HTML characters stay literal", () 
   const f = fixture(); const text = "'; alert(1); <script>not code</script>";
   f.api.capture(); assert.equal(f.api.apply(text), true); assert.equal(f.field.value, text);
 });
+
+test("reject field edits while speech is open without losing new evidence", () => {
+  const f = fixture(); f.field.value = "Original"; f.api.capture();
+  f.field.value = "Changed while recognizing";
+  assert.equal(f.api.apply("Stale dictation"), false);
+  assert.equal(f.field.value, "Changed while recognizing");
+});

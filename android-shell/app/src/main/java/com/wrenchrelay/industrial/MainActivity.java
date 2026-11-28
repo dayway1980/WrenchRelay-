@@ -52,10 +52,13 @@ public class MainActivity extends AppCompatActivity {
   private ProgressBar progress;
   private LinearLayout networkError;
   private ValueCallback<Uri[]> pendingFiles;
+  private boolean speechActive;
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+        .setAppearanceLightNavigationBars(false);
     LinearLayout screen = new LinearLayout(this);
     screen.setOrientation(LinearLayout.VERTICAL);
     ViewCompat.setOnApplyWindowInsetsListener(screen, (view, insets) -> {
@@ -178,7 +181,8 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void startNativeSpeech() {
-    if (web == null || !WebHostPolicy.isTrustedHttps(web.getUrl())) return;
+    if (speechActive || web == null || !WebHostPolicy.isTrustedHttps(web.getUrl())) return;
+    speechActive = true;
     final String script;
     try {
       try (java.io.InputStream input = getAssets().open("native-voice.js")) {
@@ -189,11 +193,14 @@ public class MainActivity extends AppCompatActivity {
         script = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
       }
     } catch (IOException error) {
+      speechActive = false;
       Toast.makeText(this, R.string.microphone_fallback, Toast.LENGTH_LONG).show();
       return;
     }
     web.evaluateJavascript(script + "\nwindow.__wrNativeVoice.capture();", captured -> {
+      if (isFinishing() || isDestroyed() || web == null) return;
       if (!"true".equals(captured)) {
+        speechActive = false;
         new AlertDialog.Builder(this).setTitle(R.string.speak_note)
             .setMessage(R.string.select_notes_first).setPositiveButton(android.R.string.ok, null).show();
         return;
@@ -205,6 +212,7 @@ public class MainActivity extends AppCompatActivity {
       try {
         startActivityForResult(intent, REQUEST_SPEECH);
       } catch (ActivityNotFoundException | SecurityException error) {
+        speechActive = false;
         Toast.makeText(this, R.string.recognizer_unavailable, Toast.LENGTH_LONG).show();
       }
     });
@@ -222,6 +230,7 @@ public class MainActivity extends AppCompatActivity {
           String js = "Boolean(window.__wrNativeVoice && window.__wrNativeVoice.apply("
               + JSONObject.quote(text) + "));";
           web.evaluateJavascript(js, applied -> {
+            if (isFinishing() || isDestroyed() || web == null) return;
             if ("true".equals(applied)) {
               Toast.makeText(this, R.string.note_added, Toast.LENGTH_SHORT).show();
             } else {
@@ -297,6 +306,7 @@ public class MainActivity extends AppCompatActivity {
 
   @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
+    if (requestCode == REQUEST_SPEECH) speechActive = false;
     if (requestCode == REQUEST_SPEECH && resultCode == Activity.RESULT_OK && data != null) {
       ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
       if (results != null && !results.isEmpty()) reviewSpeech(results.get(0));
