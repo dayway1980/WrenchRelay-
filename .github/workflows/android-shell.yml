@@ -147,16 +147,28 @@ jobs:
           set -euo pipefail
           sudo chmod a+rw /dev/kvm
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/wr-android-user"
+          export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
           test -x "$SDKMANAGER"
           test -x "$AVDMANAGER"
           "$SDKMANAGER" "emulator" "system-images;android-36;google_apis;x86_64"
-          echo no | "$AVDMANAGER" create avd --name wr-ci --package "system-images;android-36;google_apis;x86_64" --force
+          echo no | "$AVDMANAGER" create avd --name wr-ci --package "system-images;android-36;google_apis;x86_64" --path "$ANDROID_AVD_HOME/wr-ci.avd" --force
+          test -f "$ANDROID_AVD_HOME/wr-ci.avd/config.ini"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["ANDROID_AVD_HOME"])
+          (root / "wr-ci.ini").write_text("avd.ini.encoding=UTF-8\npath=" + str(root / "wr-ci.avd") + "\ntarget=android-36\n")
+          PY
+          test "$("$ANDROID_HOME/emulator/emulator" -list-avds)" = "wr-ci"
           "$ANDROID_HOME/emulator/emulator" -avd wr-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 > "$RUNNER_TEMP/emulator.log" 2>&1 &
           EMULATOR_PID=$!
           trap 'kill "$EMULATOR_PID" 2>/dev/null || true' EXIT
-          adb wait-for-device
+          timeout 180 adb wait-for-device
           timeout 240 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
           adb shell input keyevent 82
           python3 android-shell/device_smoke.py --artifacts "$RUNNER_TEMP/android-artifacts" --output device-evidence

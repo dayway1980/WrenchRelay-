@@ -39,6 +39,8 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
+import java.util.Collections;
 import java.util.ArrayList;
 import java.util.Locale;
 import org.json.JSONObject;
@@ -155,6 +157,7 @@ public class MainActivity extends AppCompatActivity {
       @Override public void onPageFinished(WebView view, String url) {
         progress.setVisibility(View.GONE);
         webBack.setEnabled(view.canGoBack());
+        applyClientAdjustments(view);
       }
       @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
         webBack.setEnabled(view.canGoBack());
@@ -165,15 +168,38 @@ public class MainActivity extends AppCompatActivity {
       @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
         if (request.isForMainFrame() && response.getStatusCode() >= 400) showNetworkError();
       }
+      @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+        if (!WebHostPolicy.isBlockedAndroidCheckout(request.getUrl().toString())) return null;
+        String body = "{\"detail\":" + JSONObject.quote(getString(R.string.purchases_unavailable)) + "}";
+        return new WebResourceResponse("application/json", "UTF-8", 403, "Purchases unavailable",
+            Collections.singletonMap("Cache-Control", "no-store"),
+            new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
+      }
       @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
         if (!request.isForMainFrame()) return false;
         String url = request.getUrl().toString();
+        if (WebHostPolicy.isBlockedAndroidCheckout(url)) return true;
         if (WebHostPolicy.isTrustedHttps(url)) return false;
         if (WebHostPolicy.canOpenExternally(url)) openExternal(url);
         return true;
       }
     });
     if (state == null || web.restoreState(state) == null) web.loadUrl(HOME);
+  }
+
+  private void applyClientAdjustments(WebView view) {
+    if (!WebHostPolicy.isTrustedHttps(view.getUrl())) return;
+    try (java.io.InputStream input = getAssets().open("native-client.js")) {
+      java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+      byte[] buffer = new byte[4096];
+      int count;
+      while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
+      String settings = "{\"checkoutUnavailable\":"
+          + JSONObject.quote(getString(R.string.purchases_unavailable)) + "}";
+      view.evaluateJavascript(new String(bytes.toByteArray(), StandardCharsets.UTF_8) + "(" + settings + ");", null);
+    } catch (IOException error) {
+      // The request guard still blocks checkout if the presentation asset cannot load.
+    }
   }
 
   private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
