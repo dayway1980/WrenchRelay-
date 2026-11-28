@@ -52,6 +52,99 @@ def shot(path):
     with open(path, "wb") as output:
         subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=output, check=True, timeout=20)
 
+
+SITE_HOST = "wrenchrelayllc.com"
+NETWORK_ERROR_MARKERS = (
+    "could not load",
+    "check your connection",
+    "err_name_not_resolved",
+    "webpage not available",
+)
+
+def has_text(root, fragment):
+    needle = fragment.casefold()
+    return any(needle in label(node).casefold() for node in root.iter("node"))
+
+def network_error_visible(root):
+    blob = " ".join(label(node) for node in root.iter("node")).casefold()
+    return any(marker in blob for marker in NETWORK_ERROR_MARKERS)
+
+def tap_node(node):
+    coords = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
+    assert len(coords) == 4, node.attrib
+    adb("shell", "input", "tap", str((coords[0]+coords[2])//2), str((coords[1]+coords[3])//2))
+
+def tap_retry(root):
+    """Tap the in-app Retry control. Prefer the lower button (error overlay over toolbar)."""
+    retries = [node for node in root.iter("node") if "retry" in label(node).casefold()]
+    if not retries:
+        return False
+    def top(node):
+        coords = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
+        return coords[1] if len(coords) == 4 else 0
+    tap_node(max(retries, key=top))
+    return True
+
+def probe_site():
+    """Check from the emulator that wrenchrelayllc.com resolves and accepts TCP/443."""
+    scripts = (
+        "toybox timeout 6 sh -c 'echo | toybox nc -w 5 %s 443' >/dev/null 2>&1 && echo REACHABLE" % SITE_HOST,
+        "toybox wget -T 5 -O /dev/null https://%s/ >/dev/null 2>&1 && echo REACHABLE" % SITE_HOST,
+        "ping -c 1 -W 3 %s >/dev/null 2>&1 && echo DNS_ONLY" % SITE_HOST,
+    )
+    notes = []
+    for script in scripts:
+        try:
+            out = adb("shell", "sh", "-c", script, timeout=15)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            notes.append((getattr(error, "output", None) or str(error))[-120:].strip())
+            continue
+        if "REACHABLE" in out:
+            return "REACHABLE"
+        if "DNS_ONLY" in out:
+            notes.append("DNS_ONLY")
+        elif out.strip():
+            notes.append(out.strip()[-120:])
+    return "; ".join(note for note in notes if note) or "unreachable"
+
+def wait_until_site_reachable(timeout=120):
+    end = time.monotonic() + timeout
+    last = ""
+    while time.monotonic() < end:
+        last = probe_site()
+        if last == "REACHABLE":
+            return last
+        time.sleep(2)
+    raise AssertionError(
+        "emulator could not resolve and reach https://%s:443; last probe: %s" % (SITE_HOST, last)
+    )
+
+def wait_for_sign_in(timeout=120):
+    """Wait for the live sign-in page. If the native load-error screen appears, tap Retry."""
+    end = time.monotonic() + timeout
+    last_error = ""
+    last_retry_at = 0
+    retried = 0
+    while time.monotonic() < end:
+        try:
+            root = tree()
+            if has_text(root, "Sign in"):
+                return
+            if network_error_visible(root):
+                last_error = "native network-error screen visible"
+                if time.monotonic() - last_retry_at >= 8:
+                    if tap_retry(root):
+                        retried += 1
+                        last_retry_at = time.monotonic()
+                        last_error += "; tapped Retry (%s)" % retried
+            else:
+                last_error = "UI captured; Sign in absent"
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+                ET.ParseError, ValueError, RuntimeError) as error:
+            last_error = str(error)[-300:]
+        time.sleep(2)
+    raise AssertionError("Missing UI: Sign in; last inspection: " + last_error)
+
 def diagnostics(output):
     for filename, args in (
         ("activity.txt", ("shell", "dumpsys", "activity", "activities")),
@@ -95,9 +188,11 @@ def main():
         adb("shell", "wm", "dismiss-keyguard")
         adb("install", "-r", str(apks[0]), timeout=60)
         result["checks"].append("install exact artifact")
+        result["site_probe"] = wait_until_site_reachable()
+        result["checks"].append("emulator reached wrenchrelayllc.com")
         adb("shell", "am", "start", "-W", "-n", PKG + "/com.wrenchrelay.industrial.MainActivity")
         find("Speak note")
-        find("Sign in")
+        wait_for_sign_in()
         result["checks"].append("launch real public sign-in")
         shot(output/"01-client-sign-in.png")
         tap("Privacy & account"); tap("About this app")
