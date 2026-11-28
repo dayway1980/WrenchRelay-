@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="app_name">WrenchRelay Industrial</string>
-  <string name="account_settings">Privacidad y eliminación de cuenta</string>
-  <string name="account_settings_content_description">Abrir la política de privacidad o solicitar la eliminación de la cuenta</string>
+  <string name="account_settings">Privacidad y cuenta</string>
+  <string name="account_settings_content_description">Abrir privacidad, eliminación de cuenta o información de la aplicación</string>
   <string name="account_dialog_title">Privacidad y cuenta</string>
   <string name="privacy_action">Leer política de privacidad</string>
   <string name="deletion_action">Solicitar eliminación de cuenta</string>
@@ -10,5 +10,24 @@
   <string name="link_unavailable">Este enlace de cuenta no está disponible</string>
   <string name="open_failed">No se puede abrir el enlace</string>
   <string name="file_picker_unavailable">Selector de archivos no disponible</string>
-  <string name="microphone_fallback">Micrófono no disponible; utilice la entrada de texto</string>
+  <string name="microphone_fallback">Use Dictar nota o escriba las notas de mantenimiento.</string>
+  <string name="speak_note">Dictar nota</string>
+  <string name="retry">Reintentar</string>
+  <string name="network_error">No se pudo cargar WrenchRelay. Revise la conexión y vuelva a intentarlo.</string>
+  <string name="select_notes_first">Toque un cuadro de notas de mantenimiento y luego Dictar nota. La voz no rellena campos de cuenta ni contraseña.</string>
+  <string name="speech_prompt">Describa la observación o reparación de mantenimiento.</string>
+  <string name="recognizer_unavailable">El reconocimiento de voz no está disponible. Puede escribir sus notas.</string>
+  <string name="review_speech">Revisar la nota</string>
+  <string name="use_note">Usar nota</string>
+  <string name="copy_note">Copiar nota</string>
+  <string name="note_added">Nota añadida. Revísela antes de enviarla.</string>
+  <string name="notes_changed">El cuadro de notas cambió. Copie el texto y péguelo en el registro correcto.</string>
+  <string name="note_copied">Nota copiada</string>
+  <string name="about_app">Acerca de esta app</string>
+  <string name="app_version">Versión %1$s</string>
+  <string name="qa_build">Compilación de depuración para pruebas; no es una versión de Google Play</string>
+  <string name="app_operator">Operada por WrenchRelay LLC</string>
+  <string name="full_privacy">Política web completa</string>
+  <string name="client_privacy_notice">WrenchRelay LLC opera esta aplicación.\n\nEl servicio WrenchRelay procesa la información de cuenta y mantenimiento que introduce. Los archivos se eligen mediante el selector.\n\nDictar nota abre el reconocimiento de voz del dispositivo. Su proveedor puede procesar audio conforme a sus condiciones. Este cliente recibe texto reconocido; no solicita permiso de micrófono ni captura audio sin procesar en ese flujo. Revise el texto antes de añadirlo a las notas. También puede escribir.\n\nLa aplicación se conecta a wrenchrelayllc.com mediante HTTPS. La política web explica el procesamiento del servicio y la eliminación de cuenta. Abrir un enlace no elimina los datos: debe solicitarse y procesarse la eliminación.\n\nLa IA puede equivocarse. Verifique el equipo, la evidencia y el borrador antes de aprobar el registro. Siga los procedimientos del sitio, bloqueo y etiquetado e instrucciones del fabricante.\n\nContacto: support@wrenchrelay.app</string>
+  <string name="purchases_unavailable">Las compras no están disponibles en esta aplicación Android.</string>
 </resources>

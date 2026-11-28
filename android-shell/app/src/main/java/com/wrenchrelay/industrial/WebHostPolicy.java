@@ -21,6 +21,16 @@ public final class WebHostPolicy {
     }
   }
 
+  public static boolean isBlockedAndroidCheckout(String value) {
+    if (!isTrustedHttps(value)) return false;
+    try {
+      String path = new URI(value).normalize().getPath();
+      return "/api/billing/checkout".equals(path) || "/api/billing/checkout/".equals(path);
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
   public static boolean canOpenExternally(String value) {
     try {
       if (value == null) return false;

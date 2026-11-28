@@ -21,6 +21,17 @@ public class WebHostPolicyTest {
     assertFalse(WebHostPolicy.isTrustedHttps(null));
   }
 
+  @Test public void androidCheckoutGuardPreservesOtherAccountRoutes() {
+    assertTrue(WebHostPolicy.isBlockedAndroidCheckout("https://wrenchrelayllc.com/api/billing/checkout"));
+    assertTrue(WebHostPolicy.isBlockedAndroidCheckout("https://wrenchrelayllc.com/api/billing/checkout/?plan=pro"));
+    assertTrue(WebHostPolicy.isBlockedAndroidCheckout("https://app.wrenchrelayllc.com/api/billing/checkout"));
+    assertFalse(WebHostPolicy.isBlockedAndroidCheckout("https://wrenchrelayllc.com/api/billing/status"));
+    assertFalse(WebHostPolicy.isBlockedAndroidCheckout("https://wrenchrelayllc.com/api/billing/portal"));
+    assertFalse(WebHostPolicy.isBlockedAndroidCheckout("https://wrenchrelayllc.com/delete-account"));
+    assertFalse(WebHostPolicy.isBlockedAndroidCheckout("https://wrenchrelayllc.com.attacker.example/api/billing/checkout"));
+    assertFalse(WebHostPolicy.isBlockedAndroidCheckout(null));
+  }
+
   @Test public void externalIntentsAreRestrictedToSafeSchemes() {
     assertTrue(WebHostPolicy.canOpenExternally("https://accounts.google.com/"));
     assertTrue(WebHostPolicy.canOpenExternally("mailto:support@example.com"));
